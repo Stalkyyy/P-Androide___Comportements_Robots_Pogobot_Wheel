@@ -1,0 +1,40 @@
+---
+
+window_width: 600       # In pixels
+window_height: 600      # In pixels
+
+arena_file: arenas/disk.csv
+#arena_file: arenas/arena8.csv
+arena_surface: 1.0e6    # In mm²
+
+delete_old_files: true
+enable_data_logging: true
+data_filename: "frames/data.feather"
+enable_console_logging: true
+console_filename: "frames/console.txt"
+
+seed: 0
+nBots: 150
+initial_robot_formation: random
+simulationTime: 500.0   # In s
+robot_radius: 26.5      # In mm
+commRadius: 133.0       # In mm, from center of a focal robot to the center of a neighboring robot
+msgSuccessRate: 0.9
+showComms: false
+GUI: true
+
+timeStep: 0.01          # In s
+GUI_speed_up: 1.0
+
+initial_light_value: 32767
+photo_start_at: 1.0         # In s
+photo_start_duration: 1.0   # In s
+
+
+save_data_period: 1.0       # In s
+save_video_period: 1.0      # In s
+frames_name: "frames/f{:010.4f}.png"
+
+# MODELINE "{{{1
+# vim:expandtab:softtabstop=4:shiftwidth=4:fileencoding=utf-8
+# vim:foldmethod=marker
