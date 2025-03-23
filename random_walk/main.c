@@ -32,53 +32,97 @@ void ping_robots(void) {
     pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
 }
 
-void get_intensities(int intensities[]) {
+void get_intensities(bool detection[]) {
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
+
         int sensor_id = msg.header._receiver_ir_index;
-        int power = msg.header._emitting_power_list;
-        printf("%d\n", sensor_id);
         if (sensor_id >= 0 && sensor_id < 4) {
-            intensities[sensor_id] = power;
+            detection[sensor_id] = true;
         }
     }
 }
 
-bool avoid_collision(time_reference_t *timer, int *intensities) {
-    if (intensities[0] > MIN_DISTANCE || intensities[1] > MIN_DISTANCE || intensities[3] > MIN_DISTANCE) {
-        pogobot_timer_init(timer, ACTION_DELAY_MICROSECONDS);
-        pogobot_timer_wait_for_expiry(timer);
 
-        if (intensities[1] > intensities[3]) {
-            // Si l'intensité vient de l'avant droit, tourner à gauche
-            pogobot_motor_set(motorL, motorQuarter);
-            pogobot_motor_set(motorR, motorFull);
-            pogobot_led_setColor(255, 0, 0);
-        } else {
-            // Si l'intensité vient de l'avant gauche, tourner à droite
-            pogobot_motor_set(motorL, motorFull);
-            pogobot_motor_set(motorR, motorQuarter);
-            pogobot_led_setColor(0, 255, 0);
-        } 
 
-        return true;
+void movement(bool *detection) {
+    // Initialisation des capteurs
+    bool sensorFront = detection[0];
+    bool sensorRight = detection[1];
+    bool sensorBack = detection[2];
+    bool sensorLeft = detection[3];
+
+    // Initialisation des moteurs
+    uint16_t motorLeft = motorThreeQuarter;
+    uint16_t motorRight = motorThreeQuarter;
+
+    // Pour les leds
+    int r = 0, g = 0, b = 0;
+
+
+    // Gestion des obstacles
+    if (sensorBack) {
+        motorLeft += motorQuarter;
+        motorRight += motorQuarter;
     }
 
-    return false;
+    if (sensorFront) {
+        motorLeft -= motorQuarter;
+        motorRight -= motorQuarter;
+    }
+
+    if (sensorRight) {
+        motorRight -= motorHalf;
+    }
+
+    if (sensorLeft) {
+        motorLeft -= motorHalf;
+    }
+
+    // Limitation des moteurs dans la plage
+    // motorLeft = (motorLeft > motorFull) ? motorFull : (motorLeft < motorStop ? motorStop : motorLeft);
+    // motorRight = (motorRight > motorFull) ? motorFull : (motorRight < motorStop ? motorStop : motorRight);
+
+
+    // Les couleurs des leds
+    if (motorLeft == motorRight) {
+        // Avance ou recule en ligne droite
+        if (motorLeft > motorThreeQuarter) {
+            g = 255;  // Vert pour avancer
+        } else if (motorLeft < motorQuarter) {
+            r = 255;  // Rouge pour reculer
+        } else {
+            g = 128;  // Vert clair pour vitesse moyenne
+        }
+    } else if (motorLeft > motorRight) {
+        // Tourne à droite
+        b = 255;  // Bleu pour tourner à gauche
+    } else if (motorRight > motorLeft) {
+        // Tourne à gauche
+        r = 255;
+        g = 255;  // Jaune pour tourner à droite
+    }
+
+    // Si très lent ou à l'arrêt, lumière blanche
+    if (motorLeft == motorStop && motorRight == motorStop) {
+        r = g = b = 128;  // Blanc/gris clair pour l'arrêt
+    }
+
+    pogobot_led_setColor(r, g, b);
+
+    // Commande des moteurs
+    pogobot_motor_set(motorL, motorLeft);
+    pogobot_motor_set(motorR, motorRight);
+    //printf("Left : %d <===> Right : %d\n", motorLeft, motorRight);
 }
 
 void user_step(void) {
     ping_robots();
-
-    int intensities[4] = {0, 0, 0, 0};
-    get_intensities(intensities);
-    if (!avoid_collision(&mydata->timer_it, intensities)) {
-        pogobot_led_setColor(0, 0, 255);
-        pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorStop);
-    }
+    bool detection[4] = {false, false, false, false};
+    get_intensities(detection);
+    movement(detection);
 }
 
 int main(void) {
