@@ -11,6 +11,6 @@ void led_set_red(void);
 void led_set_green(void);
 void led_set_blue(void);
 void led_set_off(void);
-void led_blink(uint8_t r, uint8_t g, uint8_t b, int duration);
+void led_blink(uint8_t r, uint8_t g, uint8_t b, time_reference_t *timer_it);
 
 #endif // LED_CONTROL_H

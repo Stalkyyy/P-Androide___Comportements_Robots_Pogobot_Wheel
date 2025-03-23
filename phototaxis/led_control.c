@@ -20,9 +20,12 @@ void led_set_off(void) {
     led_set_color(0, 0, 0);
 }
 
-void led_blink(uint8_t r, uint8_t g, uint8_t b, int duration) {
+void led_blink(uint8_t r, uint8_t g, uint8_t b, time_reference_t *timer_it) {
     led_set_color(r, g, b);
-    msleep(duration);
+
+    pogobot_stopwatch_reset(timer_it);
+    pogobot_timer_init(timer_it, 1000);
+    pogobot_timer_wait_for_expiry(timer_it);
+
     led_set_off();
-    msleep(duration);
 }

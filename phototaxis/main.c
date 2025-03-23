@@ -4,17 +4,34 @@
 #include "motor_control.h"
 #include "led_control.h"
 
+#define THRESOLD_DETECTION 10
+#define THRESOLD_DIFF_FRONT 10
+
 typedef struct {
     // Put all global variables you want here.
     uint8_t data_foo[8];
     time_reference_t timer_it;
 } USERDATA;
 
-
-
 DECLARE_USERDATA(USERDATA);
 REGISTER_USERDATA(USERDATA);
 
+
+/*
+ * ====================================================================================
+ */
+
+int16_t max(int16_t a, int16_t b) {
+    return a > b ? a : b;
+}
+
+int16_t max3(int16_t a, int16_t b, int16_t c) {
+    return max(max(a, b), c);
+}
+
+/*
+ * ====================================================================================
+ */
 
 
 void user_init(void) {
@@ -33,55 +50,58 @@ void user_init(void) {
 }
 
 
-int16_t max(int16_t a, int16_t b) {
-    return a > b ? a : b;
-}
-
-int16_t max3(int16_t a, int16_t b, int16_t c) {
-    return max(max(a, b), c);
-}
-
-
-
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
-    int16_t val[3];
+    if (!(pogobot_ticks % 30 == 0))
+        return;
 
-    // Mesure des intensités lumineuses
-    for (int i = 0; i < 3; i++) {
-        val[i] = pogobot_photosensors_read(i);
-    }
+    int16_t back_photo = pogobot_photosensors_read(0);
+    int16_t front_left_photo = pogobot_photosensors_read(1);
+    int16_t front_right_photo = pogobot_photosensors_read(2);
+
+    int16_t max_sensor = max3(back_photo, front_left_photo, front_right_photo);
+    int16_t diff_left_right = abs(front_left_photo - front_right_photo);
 
 
     /*
      * Contrôle des moteurs en fonction de la lumière
      */
 
+    // Cas : Il n'y a pas de lumière / on considère qu'il n'y a pas de lumière.
+    if (max_sensor < THRESOLD_DETECTION) {
+        pogobot_stop();
+        /* printf("Je ne vois rien !\n"); */
+    }
+
     // Cas : La lumière est détectée en face du pogobot. 
-    if (max3(val[0], val[1], val[2]) == max(val[0], val[1]) && abs(val[0] - val[1]) < 0.1) {
+    else if (max_sensor != back_photo && diff_left_right < THRESOLD_DIFF_FRONT) {
         pogobot_move_forward();
-        led_set_green();
-    } 
-    
-    // Cas : La lumière est détectée à la droite du pogobot.
-    else if (max3(val[0], val[1], val[2]) == val[0]) {
-        pogobot_turn_left();
-        led_set_blue();
+        /* printf("En face ! -> maxSensor = %d\n", max_sensor); */
     } 
     
     // Cas : La lumière est détectée à la gauche du pogobot.
-    else if (max3(val[0], val[1], val[2]) == val[1]) {
+    else if (max_sensor == front_left_photo) {
+        pogobot_turn_left();
+        /* printf("A gauche ! -> maxSensor = %d\n", max_sensor); */
+    } 
+    
+    // Cas : La lumière est détectée à la droite du pogobot.
+    else if (max_sensor == front_right_photo) {
         pogobot_turn_right();
-        led_set_red();
+        /* printf("A droite ! -> maxSensor = %d\n", max_sensor); */
     } 
 
-    // Cas : On tourne derrière.
+    // Cas : La lumière est détectée à l'arrière.
     else {
-        pogobot_stop();
-        led_blink(255, 0, 0, 250);
+        pogobot_turn_right();
+        /* printf("Derrière ! -> maxSensor = %d\n", max_sensor); */
     }
 }
 
+
+/*
+ * ====================================================================================
+ */
 
 
 // Entrypoint of the program
