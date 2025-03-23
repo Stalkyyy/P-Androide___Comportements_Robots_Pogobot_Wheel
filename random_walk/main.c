@@ -1,82 +1,91 @@
-
-// Main include for pogobots, both for real robots and for simulations
 #include "pogobase.h"
+#include <stdlib.h>
+#include <time.h>
 
-// "Global" variables should be inserted within the USERDATA struct.
-// /!\  In simulation, don't declare non-const global variables outside this struct, elsewise they will be shared among all agents (and this is not realistic).
+#define MIN_DISTANCE 0
+#define ACTION_DELAY_MICROSECONDS 16
+
 typedef struct {
-    // Put all global variables you want here.
     uint8_t data_foo[8];
     time_reference_t timer_it;
 } USERDATA;
 
-// Call this macro in the same file (.h or .c) as the declaration of USERDATA
 DECLARE_USERDATA(USERDATA);
-
-// Don't forget to call this macro in the main .c file of your project (only once!)
 REGISTER_USERDATA(USERDATA);
-// Now, members of the USERDATA struct can be accessed through mydata->MEMBER. E.g. mydata->data_foo
-//  On real robots, the compiler will automatically optimize the code to access member variables as if they were true globals.
 
-
-// Init function. Called once at the beginning of the program (cf 'pogobot_start' call in main())
 void user_init(void) {
 #ifndef SIMULATOR
     printf("setup ok\n");
 #endif
-
-    // Init timer
     pogobot_stopwatch_reset(&mydata->timer_it);
-
-    // Set main loop frequency, message sending frequency, message processing frequency
-    main_loop_hz = 60;      // Call the 'user_step' function 60 times per second
+    main_loop_hz = 60;
     max_nb_processed_msg_per_tick = 0;
-    // Specify functions to send/transmit messages. See the "hanabi" example to see message sending/processing in action!
-    msg_rx_fn = NULL;       // If Null, no reception of message
-    msg_tx_fn = NULL;       // If Null, don't send any message
-
-    // Set led index to show error codes (e.g. time overflows)
-    error_codes_led_idx = 3; // Default value, negative values to disable
+    msg_rx_fn = NULL;
+    msg_tx_fn = NULL;
+    error_codes_led_idx = 3;
+    pogobot_infrared_set_power(3);
+    srand(pogobot_helper_getRandSeed()); // Initialiser le générateur de nombres aléatoires
 }
 
+void ping_robots(void) {
+    uint8_t ping_message[1] = {0};
+    pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+}
 
-// Step function. Called continuously at each step of the pogobot main loop
+void get_intensities(int intensities[]) {
+    pogobot_infrared_update();
+    while (pogobot_infrared_message_available()) {
+        message_t msg;
+        pogobot_infrared_recover_next_message(&msg);
+        int sensor_id = msg.header._receiver_ir_index;
+        int power = msg.header._emitting_power_list;
+        printf("%d\n", sensor_id);
+        if (sensor_id >= 0 && sensor_id < 4) {
+            intensities[sensor_id] = power;
+        }
+    }
+}
+
+bool avoid_collision(time_reference_t *timer, int *intensities) {
+    if (intensities[0] > MIN_DISTANCE || intensities[1] > MIN_DISTANCE || intensities[3] > MIN_DISTANCE) {
+        pogobot_timer_init(timer, ACTION_DELAY_MICROSECONDS);
+        pogobot_timer_wait_for_expiry(timer);
+
+        if (intensities[1] > intensities[3]) {
+            // Si l'intensité vient de l'avant droit, tourner à gauche
+            pogobot_motor_set(motorL, motorQuarter);
+            pogobot_motor_set(motorR, motorFull);
+            pogobot_led_setColor(255, 0, 0);
+        } else {
+            // Si l'intensité vient de l'avant gauche, tourner à droite
+            pogobot_motor_set(motorL, motorFull);
+            pogobot_motor_set(motorR, motorQuarter);
+            pogobot_led_setColor(0, 255, 0);
+        } 
+
+        return true;
+    }
+
+    return false;
+}
+
 void user_step(void) {
-    if (pogobot_ticks % 1000 == 0 && pogobot_helper_getid() == 0) {     // Only print messages for robot 0
-        printf(" HELLO WORLD !!!   Robot ID: %d   Current time: %lums  Timer: %luµs   pogobot_ticks: %lu\n",
-                pogobot_helper_getid(),
-                current_time_milliseconds(),
-                pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it),
-                pogobot_ticks       // Increased by one at each execution of user_step
-                );
-    }
+    ping_robots();
 
-    if ((uint32_t)(current_time_milliseconds() / 10000) % 2 == 0) {
-        pogobot_led_setColor(0,0,255);
-        pogobot_motor_set(motorL, motorFull);
-        pogobot_motor_set(motorR, motorStop);
-    } else {
-        pogobot_led_setColor(255,0,0);
+    int intensities[4] = {0, 0, 0, 0};
+    get_intensities(intensities);
+    if (!avoid_collision(&mydata->timer_it, intensities)) {
+        pogobot_led_setColor(0, 0, 255);
         pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorFull);
+        pogobot_motor_set(motorR, motorStop);
     }
-
-    mydata->data_foo[0] = 42;
 }
 
-
-// Entrypoint of the program
 int main(void) {
-    pogobot_init();     // Initialization routine for the robots
+    pogobot_init();
 #ifndef SIMULATOR
     printf("init ok\n");
 #endif
-
-    // Specify the user_init and user_step functions
     pogobot_start(user_init, user_step);
     return 0;
 }
-
-// MODELINE "{{{1
-// vim:expandtab:softtabstop=4:shiftwidth=4:fileencoding=utf-8
-// vim:foldmethod=marker
