@@ -11,6 +11,8 @@ typedef struct {
     // Put all global variables you want here.
     uint8_t data_foo[8];
     time_reference_t timer_it;
+    uint16_t motorLeft;
+    uint16_t motorRight;
 } USERDATA;
 
 DECLARE_USERDATA(USERDATA);
@@ -47,9 +49,30 @@ void user_init(void) {
     msg_tx_fn = NULL;       
 
     error_codes_led_idx = 3;
+
+    mydata->motorLeft = motorStop;
+    mydata->motorRight = motorStop;
+
 }
 
 
+<<<<<<< HEAD
+=======
+int16_t max(int16_t a, int16_t b) {
+    return a > b ? a : b;
+}
+
+int16_t min(int16_t a, int16_t b) {
+    return a < b ? a : b;
+}
+
+int16_t max3(int16_t a, int16_t b, int16_t c) {
+    return max(max(a, b), c);
+}
+
+
+
+>>>>>>> 94f3597 (Phototaxis 1.1 - mouvement)
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
     if (!(pogobot_ticks % 30 == 0))
@@ -74,6 +97,7 @@ void user_step(void) {
     }
 
     // Cas : La lumière est détectée en face du pogobot. 
+<<<<<<< HEAD
     else if (max_sensor != back_photo && diff_left_right < THRESOLD_DIFF_FRONT) {
         pogobot_move_forward();
         /* printf("En face ! -> maxSensor = %d\n", max_sensor); */
@@ -96,6 +120,53 @@ void user_step(void) {
         pogobot_turn_right();
         /* printf("Derrière ! -> maxSensor = %d\n", max_sensor); */
     }
+=======
+    if (max3(val[0], val[1], val[2]) == max(val[0], val[1]) && abs(val[0] - val[1]) < 50) {
+        if (mydata->motorLeft > mydata->motorRight)
+            mydata->motorRight += 3;
+        else 
+            mydata->motorRight += 3;
+
+        mydata->motorLeft = max(motorHalf, mydata->motorLeft);
+        mydata->motorRight = max(motorHalf, mydata->motorRight);
+
+        // pogobot_move_forward();
+        // led_set_green();
+    } 
+    
+    // Cas : La lumière est détectée à la droite du pogobot.
+    else if (max3(val[0], val[1], val[2]) == val[0]) {
+        mydata->motorLeft -= 10;
+        mydata->motorRight += 10;
+        // pogobot_turn_left();
+        // led_set_blue();
+    } 
+    
+    // Cas : La lumière est détectée à la gauche du pogobot.
+    else if (max3(val[0], val[1], val[2]) == val[1]) {
+        mydata->motorLeft += 10;
+        mydata->motorRight -= 10;
+        // pogobot_turn_right();
+        // led_set_red();
+    } 
+
+    else if (max3(val[0], val[1], val[2]) == val[2]) {
+        mydata->motorLeft += 10;
+        mydata->motorRight -= 10;
+        // pogobot_turn_right();
+        // led_set_red();
+    } 
+
+    mydata->motorLeft = max(0, mydata->motorLeft);
+    mydata->motorRight = max(0, mydata->motorRight);
+
+    mydata->motorLeft = min(motorFull, mydata->motorLeft);
+    mydata->motorRight = min(motorFull, mydata->motorRight);
+
+    pogobot_motor_set(motorR, mydata->motorRight);
+    pogobot_motor_set(motorL, mydata->motorLeft);
+
+>>>>>>> 94f3597 (Phototaxis 1.1 - mouvement)
 }
 
 
