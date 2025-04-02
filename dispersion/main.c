@@ -9,6 +9,7 @@ typedef struct {
     uint8_t data_foo[8];
     time_reference_t timer_it;
     int direction_counts[4]; //Compteur de message reçus selon la direction devant, droite, derriere, gauche 
+    int avoidance_step; // Gere l'écartement progressif des robots quand ils se croisent
 } USERDATA;
 
 // Call this macro in the same file (.h or .c) as the declaration of USERDATA
@@ -39,13 +40,18 @@ void user_init(void) {
     // Set led index to show error codes (e.g. time overflows)
     error_codes_led_idx = 3; // Default value, negative values to disable
     
-    pogobot_infrared_set_power(3); //Puissance max pour communication InfraRouge
+    pogobot_infrared_set_power(1); //Puissance pour communication InfraRouge
 
 }
 
 void ping_robots(void) {
     uint8_t ping_message[1] = {42}; // Mess arbitraire 
     pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+    
+}
+void ping_wall(void) {
+    uint8_t wall_message[1] = {99}; // Message spécifique pour représenter un mur
+    pogobot_infrared_sendLongMessage_omniSpe(wall_message, sizeof(wall_message));
 }
 
 void update_direction_count(void){
@@ -60,6 +66,14 @@ void update_direction_count(void){
         message_t mess;
         pogobot_infrared_recover_next_message(&mess);
 
+
+         //Vérifie si le messsage est un mur 
+         if (mess.payload[0] == 99){
+            printf("MUR DETECTE\n");
+            mydata->direction_counts[0] = 1; // Dit que le mur est devant
+            continue;
+        }
+
         //Récupération de la direction du capteur ayant reçu le message
         int dir = mess.header._receiver_ir_index;
         if(dir >= 0 && dir <4){
@@ -71,55 +85,84 @@ void update_direction_count(void){
 void perform_dispersion_movement(void){
     int *dir_count = mydata->direction_counts;
     int tot = 0;
+    //Calcul du nombre tot de robots vus 
     for (int i =0; i <4; i++){
         tot += dir_count[i];
     }
-
-    if (tot ==0){
+    //Detection de mur (basée sur le temps, pas optimal car peut faire demi tour meme si il n'y a pas de mur, mais il n'aura pas rencontré de robots)
+    if (dir_count[0] > 0){
+        // On fait demi tour
+        pogobot_motor_set(motorL, -motorThreeQuarter); // Vitesse négative pour marche arrière
+        pogobot_motor_set(motorR, -motorThreeQuarter);
+        pogobot_motor_set(motorL, motorThreeQuarter);
+        pogobot_motor_set(motorR, motorThreeQuarter);
+        pogobot_led_setColor(255,0,0); //Rouge normalement
+        
+    } else if (tot ==0){
         //Si aucun robot autour, On avance tout droit
+        mydata->avoidance_step = 0; // On réinitialise le l'état d'évitement
         pogobot_motor_set(motorL, motorThreeQuarter);
         pogobot_motor_set(motorR, motorThreeQuarter);
         pogobot_led_setColor(0,255,0); //Vert normalement 
-        return; 
-    }
-
-    //Direction la moins "encombrée"; c'est à dire la ou il faut aller ! 
-
-    int min_dir = 0;
-    for(int i = 0; i <4; i++){
-        if(dir_count[i] < dir_count[min_dir]){
-            min_dir = i;
-        }
-    }
-
-    //Logique de mouvement basé sur les différentes directions
-    switch(min_dir){
-        case 0: // avant
-            pogobot_motor_set(motorL,motorHalf);
-            pogobot_motor_set(motorR,motorHalf);
-            break;
-        case 1: // droite 
+    }else{
+        // Si il y a un robot, tout en tournant en s'écartant progressivement
+        mydata->avoidance_step++;
+        
+        // Alterne la direction de rotation en fonction de l'état d'évitement (pair ou impair)
+        if (mydata->avoidance_step % 2 == 0) {
             pogobot_motor_set(motorL, motorQuarter);
-            pogobot_motor_set(motorR,motorStop);
-            break;
-        case 2: // arrière 
-            pogobot_motor_dir_set(motorL, 1); // marche arrière 
-            pogobot_motor_dir_set(motorR, 1);
-            pogobot_motor_set(motorL, motorHalf);
-            pogobot_motor_set(motorR, motorHalf);
-            break;   
-        case 3: // gauche
-            pogobot_motor_set(motorL, motorStop);
+            pogobot_motor_set(motorR, motorThreeQuarter);
+        } else {
+            pogobot_motor_set(motorL, motorThreeQuarter);
             pogobot_motor_set(motorR, motorQuarter);
-            break;
-    }
+        }
 
-    //LED Orange, cela veut dire que c'est en etat de dispersion
-    pogobot_led_setColor(255,128,0);
+        // LED orange pour indiquer l'état d'évitement
+        pogobot_led_setColor(255, 128, 0);
+    } 
+    
+    
+    if (tot > 0){
+
+        //Direction la moins "encombrée"; c'est à dire la ou il faut aller ! 
+
+        int min_dir = 0;
+        for(int i = 0; i <4; i++){
+            if(dir_count[i] < dir_count[min_dir]){
+                min_dir = i;
+            }
+        }
+
+        //Logique de mouvement basé sur les différentes directions
+        switch(min_dir){
+            case 0: // avant
+                pogobot_motor_set(motorL,motorHalf);
+                pogobot_motor_set(motorR,motorHalf);
+                break;
+            case 1: // droite 
+                pogobot_motor_set(motorL, motorQuarter);
+                pogobot_motor_set(motorR,motorStop);
+                break;
+            case 2: // arrière 
+            pogobot_motor_set(motorL, -motorThreeQuarter); 
+            pogobot_motor_set(motorR, -motorThreeQuarter);
+                pogobot_motor_set(motorL, motorHalf);
+                pogobot_motor_set(motorR, motorHalf);
+                break;   
+            case 3: // gauche
+                pogobot_motor_set(motorL, motorStop);
+                pogobot_motor_set(motorR, motorQuarter);
+                break;
+        }
+
+        //LED Orange, cela veut dire que c'est en etat de dispersion
+        pogobot_led_setColor(255,128,0);
+    }
 }
 
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
+  ping_wall(); // Envoi un ping InfraRouge pour détecter les murs
   ping_robots();  //Envoi un ping InfraRouge
   update_direction_count(); // Analyse les Messages InfraRouge reçus
   perform_dispersion_movement(); // Bouge en Direction opposée aux autres 
