@@ -1,6 +1,7 @@
-
 // Main include for pogobots, both for real robots and for simulations
 #include "pogobase.h"
+
+#define INFRARED_POWER 3 // 1, 2, 3
 
 // "Global" variables should be inserted within the USERDATA struct.
 // /!\  In simulation, don't declare non-const global variables outside this struct, elsewise they will be shared among all agents (and this is not realistic).
@@ -8,6 +9,7 @@ typedef struct {
     // Put all global variables you want here.
     uint8_t data_foo[8];
     time_reference_t timer_it;
+    int suitDeja;
 } USERDATA;
 
 // Call this macro in the same file (.h or .c) as the declaration of USERDATA
@@ -37,31 +39,74 @@ void user_init(void) {
 
     // Set led index to show error codes (e.g. time overflows)
     error_codes_led_idx = 3; // Default value, negative values to disable
+
+    pogobot_infrared_set_power(INFRARED_POWER);
+    srand(pogobot_helper_getRandSeed());
+
+    mydata->suitDeja = 0; // au départ, le robot ne suit personne
 }
 
 
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
-    if (pogobot_ticks % 1000 == 0 && pogobot_helper_getid() == 0) {     // Only print messages for robot 0
-        printf(" HELLO WORLD !!!   Robot ID: %d   Current time: %lums  Timer: %luµs   pogobot_ticks: %lu\n",
-                pogobot_helper_getid(),
-                current_time_milliseconds(),
-                pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it),
-                pogobot_ticks       // Increased by one at each execution of user_step
-                );
+    
+    // Transmission d'un message
+    uint8_t msg_envoi[2];
+    msg_envoi[0] = 42;
+    msg_envoi[1] = mydata->suitDeja; // indique si le robot suit déjà qlq (pas d'inspi pour le nom j'avoue)
+    pogobot_infrared_sendLongMessage_omniSpe(msg_envoi, sizeof(msg_envoi));
+
+    // Réception d'un message et décision du mouvement à faire
+    int move_id = -1;
+    pogobot_infrared_update();
+
+    while(pogobot_infrared_message_available()>=1){
+        message_t msg;
+        pogobot_infrared_recover_next_message(&msg);
+
+        // si on détecte un robot
+        if(msg.header._packet_type == ir_t_user){
+            //printf("Message reçu par le robot %d provenant du robot %d !\n", pogobot_helper_getid(), msg.header._sender_id);
+
+            // si le robot actuel ne suit personne mais que l'autre si, alors notre robot le suit
+            if(mydata->suitDeja < msg.payload[1]){
+                pogobot_led_setColor(255, 0, 0);
+                move_id = msg.header._receiver_ir_index; 
+                mydata->suitDeja = 1;
+            } else if(msg.payload[1] == mydata->suitDeja){ // si aucun ne suit déjà un robot (ou qu'ils suivent déjà tous deux un robot --> cas à traiter, possible pb, à voir mais là pas d'idées) 
+                if(pogobot_helper_getid() < msg.header._sender_id){ // le robot avec l'id le plus petit suit l'autre
+                    pogobot_led_setColor(255, 0, 0);
+                    move_id = msg.header._receiver_ir_index;  
+                    mydata->suitDeja = 1;
+                } else {
+                    pogobot_led_setColor(0, 255, 0);
+                }
+            } else {
+                pogobot_led_setColor(0, 255, 0);
+            }
+        } 
+        // si on détecte autre / un mur (à implémenter selon ce que va donner wall_allignment)
+        else {
+            printf("Mur !\n");
+        }
     }
 
-    if ((uint32_t)(current_time_milliseconds() / 10000) % 2 == 0) {
-        pogobot_led_setColor(0,0,255);
-        pogobot_motor_set(motorL, motorFull);
+    // Mouvement 
+
+    // s'il le détecte à droite alors il va à droite 
+    // et s'il le détecte en face il tourne un peu à droite pour éviter de le foncer dedans et ensuite le suivre
+    if (move_id == 1 || move_id == 0) { 
+        //printf("droite\n");
+        pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
-    } else {
-        pogobot_led_setColor(255,0,0);
+    } else if (move_id == 3) { // s'il le détecte à gauche alors il tourne à gauche
+        //printf("gauche\n");
         pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorFull);
+        pogobot_motor_set(motorR, motorHalf);
+    } else { // si on a reçu le message de derrière on l'ignore, et idem si on n'a reçu aucun message
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
     }
-
-    mydata->data_foo[0] = 42;
 }
 
 
