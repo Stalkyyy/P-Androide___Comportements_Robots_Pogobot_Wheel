@@ -38,6 +38,7 @@ typedef struct {
     bool has_leader;
     bool is_leader;
     uint16_t nb_neighbours; // normalement, il devrait y avoir max 2 voisins car disposition en file indienne
+    uint16_t neighbours_ids[2];
     uint16_t predecessor_id; // id du robot à suivre dans la file indienne
 } USERDATA;
 
@@ -67,6 +68,16 @@ void user_init(void) {
     pogobot_led_setColor(120, 60, 0); // jaune avant et pendant l'élection du leader
 }
 
+bool id_already_received(uint16_t id){
+    for (uint8_t i = 0; i < 2; i++){
+        if(mydata->neighbours_id[i] == id){
+            return true;
+        }
+    }
+    return false;
+}
+
+
 // Définition des fonctions (elles restent inchangées)
 void send_id(uint16_t id) {
     IDMSG msg;
@@ -80,11 +91,15 @@ void detect_neighbours(void) {
     pogobot_infrared_update();
 
     while (pogobot_infrared_message_available()) {
-        printf("Message trouvé !\n");
+        //printf("Message trouvé !\n");
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
         IDMSG* received_msg = (IDMSG *)msg.payload;
-        mydata->nb_neighbours++;
+        // print("Robot %d a trouvé voisin !\n", mydata->my_id);
+        if (received_msg.id != mydata->my_id && !id_already_received(received_msg.id)){
+            mydata->nb_neighbours++;
+            print("Robot %d a trouvé voisin !\n", mydata->my_id);
+        }
     }
 }
 
@@ -127,7 +142,8 @@ void set_leader_and_order(void) {
         if (!mydata->has_leader) {
             mydata->has_leader = true;
             mydata->predecessor_id = msg.header._sender_id;
-            pogobot_led_setColor(0, 0, 255); // bleu pour le leader
+            print("Robot %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
+            pogobot_led_setColor(0, 0, 255); // bleu pour le follower
             pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
         }
     }
@@ -180,14 +196,28 @@ void follow_leader(void) {
 }
 
 void user_step(void) {
-    //printf("leader : %d\n", mydata->leader_id);
-    if(!mydata->has_leader){
-        // printf("Dans la boucle\n");
+    if (!mydata->has_leader){
+        // pogobot_timer_init(mydata->timer_it, 15e6); // 15 microsecondes
+        // pogobot_timer_wait_for_expiry(mydata->timer_it);
+
+        // if (pogobot_timer_has_expired(mydata->timer_it)){
+        //printf("Robot %d : TIMER STOP\n", mydata->my_id);
         detect_neighbours();
+        printf("----------Robot %d : %d voisins\n", mydata->my_id, mydata->nb_neighours);
         send_id_extremity();
         election_leader();
         set_leader_and_order();
+        // }
     }
+    
+    //printf("leader : %d\n", mydata->leader_id);
+    // if(!mydata->has_leader){
+    //     // printf("Dans la boucle\n");
+    //     detect_neighbours();
+    //     send_id_extremity();
+    //     election_leader();
+    //     set_leader_and_order();
+    // }
 
     random_walk_leader();
     follow_leader();
