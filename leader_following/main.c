@@ -62,12 +62,7 @@ void user_init(void) {
     mydata->predecessor_id = -1;
     mydata->nb_neighbours = 0;
 
-    pogobot_led_setColor(120, 60, 0);
-
-    detect_neighbours();
-    send_id_extremity();
-    election_leader();
-    set_leader_and_order();
+    pogobot_led_setColor(120, 60, 0); // jaune avant et pendant l'élection du leader
 }
 
 // Définition des fonctions (elles restent inchangées)
@@ -107,11 +102,14 @@ void election_leader(void) {
             if (mydata->my_id < received_msg->id) {
                 mydata->is_leader = true;
                 mydata->leader_id = mydata->my_id;
-                pogobot_led_setColor(0, 255, 0);
+                pogobot_led_setColor(0, 255, 0); // vert pour le leader
                 LEADERMSG leader_msg = { mydata->leader_id };
                 pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
             }
         }
+        else if (mydata->nb_neighbours > 1)[
+            pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&received_msg, sizeof(received_msg));
+        ]
     }
 }
 
@@ -125,11 +123,11 @@ void set_leader_and_order(void) {
         if (mydata->leader_id == -1) {
             mydata->leader_id = leader_msg->leader_id;
             mydata->predecessor_id = msg.header._sender_id;
-            pogobot_led_setColor(0, 0, 255);
-            pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)leader_msg, sizeof(leader_msg));
+            pogobot_led_setColor(0, 0, 255); // bleu pour le leader
+            pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
         }
     }
-} // salut
+}
 
 void send_position(uint16_t id, uint16_t ml, uint16_t mr) {
     POSITIONMSG msg = { id, ml, mr };
@@ -137,7 +135,7 @@ void send_position(uint16_t id, uint16_t ml, uint16_t mr) {
 }
 
 void random_walk_leader(void) {
-    if (!mydata->leader_id) return;
+    if (!mydata->is_leader) return;
 
     int directions[] = { 0, 1, 3, 4 };
     int random_index = rand() % 4;
@@ -160,7 +158,7 @@ void random_walk_leader(void) {
 }
 
 void follow_leader(void) {
-    if (mydata->leader_id) return;
+    if (mydata->is_leader) return;
 
     pogobot_infrared_update();
 
@@ -178,6 +176,13 @@ void follow_leader(void) {
 }
 
 void user_step(void) {
+    if(mydata->leader_id == -1){
+        detect_neighbours();
+        send_id_extremity();
+        election_leader();
+        set_leader_and_order();
+    }
+
     random_walk_leader();
     follow_leader();
 }
