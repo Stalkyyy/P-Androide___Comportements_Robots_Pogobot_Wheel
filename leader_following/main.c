@@ -129,7 +129,7 @@ void set_leader_and_order(void) {
             pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)leader_msg, sizeof(leader_msg));
         }
     }
-}
+} // salut
 
 void send_position(uint16_t id, uint16_t ml, uint16_t mr) {
     POSITIONMSG msg = { id, ml, mr };
