@@ -64,6 +64,9 @@ void user_init(void) {
     mydata->has_leader = false;
     mydata->predecessor_id = -1;
     mydata->nb_neighbours = 0;
+    for (uint8_t i = 0; i < 2; i++){
+        mydata->neighbours_ids[i] = UINT16_MAX;
+    }
 
     pogobot_led_setColor(120, 60, 0); // jaune avant et pendant l'élection du leader
 }
@@ -79,7 +82,7 @@ bool id_already_received(uint16_t id){
 
 void add_id_received(uint16_t id){
     for (uint8_t i = 0; i < 2; i++){
-        if(mydata->neighbours_id[i] == NULL){
+        if(mydata->neighbours_id[i] == UINT16_MAX){
             mydata->neighbours_id[i] = id;
         }
     }
