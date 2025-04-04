@@ -34,7 +34,8 @@ typedef struct {
     uint8_t data_foo[8];
     time_reference_t timer_it;
     uint16_t my_id;
-    uint16_t leader_id;
+    //uint16_t leader_id;
+    bool has_leader;
     bool is_leader;
     uint16_t nb_neighbours; // normalement, il devrait y avoir max 2 voisins car disposition en file indienne
     uint16_t predecessor_id; // id du robot à suivre dans la file indienne
@@ -58,7 +59,8 @@ void user_init(void) {
     pogobot_infrared_set_power(3);
     mydata->my_id = pogobot_helper_getid();
     mydata->is_leader = false;
-    mydata->leader_id = -1;
+    //mydata->leader_id = -1;
+    mydata->has_leader = false;
     mydata->predecessor_id = -1;
     mydata->nb_neighbours = 0;
 
@@ -78,6 +80,7 @@ void detect_neighbours(void) {
     pogobot_infrared_update();
 
     while (pogobot_infrared_message_available()) {
+        printf("Message trouvé !\n");
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
         IDMSG* received_msg = (IDMSG *)msg.payload;
@@ -86,7 +89,7 @@ void detect_neighbours(void) {
 }
 
 void send_id_extremity(void) {
-    if (mydata->nb_neighbours == 0) {
+    if (mydata->nb_neighbours == 1) {
         send_id(mydata->my_id);
     }
 }
@@ -101,15 +104,16 @@ void election_leader(void) {
         if (mydata->nb_neighbours == 1) {
             if (mydata->my_id < received_msg->id) {
                 mydata->is_leader = true;
-                mydata->leader_id = mydata->my_id;
+                //mydata->leader_id = mydata->my_id;
+                mydata->has_leader = true;
                 pogobot_led_setColor(0, 255, 0); // vert pour le leader
-                LEADERMSG leader_msg = { mydata->leader_id };
+                LEADERMSG leader_msg = { mydata->my_id };
                 pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
             }
         }
-        else if (mydata->nb_neighbours > 1)[
+        else if (mydata->nb_neighbours > 1){
             pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&received_msg, sizeof(received_msg));
-        ]
+        }
     }
 }
 
@@ -120,8 +124,8 @@ void set_leader_and_order(void) {
         pogobot_infrared_recover_next_message(&msg);
         LEADERMSG *leader_msg = (LEADERMSG *)msg.payload;
 
-        if (mydata->leader_id == -1) {
-            mydata->leader_id = leader_msg->leader_id;
+        if (!mydata->has_leader) {
+            mydata->has_leader = true;
             mydata->predecessor_id = msg.header._sender_id;
             pogobot_led_setColor(0, 0, 255); // bleu pour le leader
             pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
@@ -176,7 +180,9 @@ void follow_leader(void) {
 }
 
 void user_step(void) {
-    if(mydata->leader_id == -1){
+    //printf("leader : %d\n", mydata->leader_id);
+    if(!mydata->has_leader){
+        // printf("Dans la boucle\n");
         detect_neighbours();
         send_id_extremity();
         election_leader();
