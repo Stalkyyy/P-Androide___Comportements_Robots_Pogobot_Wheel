@@ -77,6 +77,14 @@ bool id_already_received(uint16_t id){
     return false;
 }
 
+void add_id_received(uint16_t id){
+    for (uint8_t i = 0; i < 2; i++){
+        if(mydata->neighbours_id[i] == NULL){
+            mydata->neighbours_id[i] = id;
+        }
+    }
+}
+
 
 // Définition des fonctions (elles restent inchangées)
 void send_id(uint16_t id) {
@@ -98,6 +106,7 @@ void detect_neighbours(void) {
         // printf("Robot %d a trouvé voisin !\n", mydata->my_id);
         if (received_msg->id != mydata->my_id && !id_already_received(received_msg->id)){
             mydata->nb_neighbours++;
+            add_id_received(received_msg->id);
             printf("Robot %d a trouvé voisin !\n", mydata->my_id);
         }
     }
