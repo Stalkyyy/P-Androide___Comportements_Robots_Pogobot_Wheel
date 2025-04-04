@@ -70,7 +70,7 @@ void user_init(void) {
 
 bool id_already_received(uint16_t id){
     for (uint8_t i = 0; i < 2; i++){
-        if(mydata->neighbours_id[i] == id){
+        if(mydata->neighbours_ids[i] == id){
             return true;
         }
     }
@@ -95,10 +95,10 @@ void detect_neighbours(void) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
         IDMSG* received_msg = (IDMSG *)msg.payload;
-        // print("Robot %d a trouvé voisin !\n", mydata->my_id);
-        if (received_msg.id != mydata->my_id && !id_already_received(received_msg.id)){
+        // printf("Robot %d a trouvé voisin !\n", mydata->my_id);
+        if (received_msg->id != mydata->my_id && !id_already_received(received_msg->id)){
             mydata->nb_neighbours++;
-            print("Robot %d a trouvé voisin !\n", mydata->my_id);
+            printf("Robot %d a trouvé voisin !\n", mydata->my_id);
         }
     }
 }
@@ -142,7 +142,7 @@ void set_leader_and_order(void) {
         if (!mydata->has_leader) {
             mydata->has_leader = true;
             mydata->predecessor_id = msg.header._sender_id;
-            print("Robot %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
+            printf("Robot %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
             pogobot_led_setColor(0, 0, 255); // bleu pour le follower
             pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&leader_msg, sizeof(leader_msg));
         }
@@ -203,7 +203,7 @@ void user_step(void) {
         // if (pogobot_timer_has_expired(mydata->timer_it)){
         //printf("Robot %d : TIMER STOP\n", mydata->my_id);
         detect_neighbours();
-        printf("----------Robot %d : %d voisins\n", mydata->my_id, mydata->nb_neighours);
+        printf("----------Robot %d : %d voisins\n", mydata->my_id, mydata->nb_neighbours);
         send_id_extremity();
         election_leader();
         set_leader_and_order();
