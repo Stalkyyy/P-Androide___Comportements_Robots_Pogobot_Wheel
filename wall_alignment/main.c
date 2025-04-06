@@ -74,6 +74,7 @@ void user_step(void) {
             move_id = msg.header._receiver_ir_index;
             // le temps mis pour envoyer et recevoir une détection du mur
             end_waiting_time = pogobot_stopwatch_get_elapsed_microseconds(&mydata->waiting_time);
+            printf("Temps mis pour détecter le mur : %d micro secondes\n", end_waiting_time);
         }
     }
 
@@ -86,6 +87,8 @@ void user_step(void) {
         pogobot_motor_set(motorR, motorStop);
         pogobot_led_setColor(255, 0, 0);
     } else if(end_waiting_time <= 500) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
         pogobot_led_setColor(255, 255, 0);
     } else {
         pogobot_led_setColor(0, 255, 0);
