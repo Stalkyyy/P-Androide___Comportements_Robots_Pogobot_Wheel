@@ -2,12 +2,34 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define MIN_DISTANCE 0
-#define ACTION_DELAY_MICROSECONDS 16
+/**
+ * On suppose ici que l'utilisateur a calibré les pogobots individuellement pour la marche avant.
+ * La vitesse devrait être également pris en compte pour que, le cas d'un face à face, ils puissent se détecter sans collision (probablement pour les pogobots à roues).
+ * Le calibrage sera récupérable avec pogobot_motor_power_mem_get(). 
+ */
+
+/*
+ * ====================================================================================
+ */
+
+// Prototypes des fonctions
+int16_t max(int16_t a, int16_t b);
+int16_t min(int16_t a, int16_t b);
+void ping_robots(void);
+void get_intensities(bool detection[]);
+void movement(bool *detection);
+
+/*
+ * ====================================================================================
+ */
+
 
 typedef struct {
     uint8_t data_foo[8];
     time_reference_t timer_it;
+
+    bool is_stabilized;
+
     uint16_t motorLeft;
     uint16_t motorRight;
 } USERDATA;
@@ -20,6 +42,7 @@ REGISTER_USERDATA(USERDATA);
  * ====================================================================================
  */
 
+
  int16_t max(int16_t a, int16_t b) {
     return a > b ? a : b;
 }
@@ -28,10 +51,10 @@ int16_t min(int16_t a, int16_t b) {
     return a < b ? a : b;
 }
 
+
 /*
  * ====================================================================================
  */
-
 
 
 void ping_robots(void) {
@@ -63,60 +86,42 @@ void movement(bool *detection) {
     // Initialisation des capteurs
     bool sensorFront = detection[0];
     bool sensorRight = detection[1];
-    bool sensorBack = detection[2];
+    // bool sensorBack = detection[2];
     bool sensorLeft = detection[3];
 
     // Pour les leds
     int r = 0, g = 0, b = 0;
 
-
-    if (sensorFront) {
-        mydata->motorLeft = motorStop;
-        mydata->motorRight = motorHalf;
-        r = 255;
-    } 
-    
-    else if (sensorBack) {
-        mydata->motorLeft = motorFull;
-        mydata->motorRight = motorFull;
-        b = 255;
-    } 
-    
-    else if (sensorRight) {
-        // Obstacle à droite : tourner à gauche
-        mydata->motorLeft = motorQuarter;
-        mydata->motorRight = motorHalf;
-        g = 255; 
-    } 
-    
-    else if (sensorLeft) {
-        mydata->motorLeft = motorHalf;
-        mydata->motorRight = motorQuarter;
-        g = 255; 
-    } 
-    
-    else {
-        mydata->motorLeft = motorHalf;
-        mydata->motorRight = motorHalf;
-        r = 0; g = 0; b = 0;
+    if (sensorFront && sensorLeft && sensorRight) {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorStop);
     }
 
-    // Permet de pouvoir borner la vitesse des moteurs
-    // mydata->motorLeft = max(0, mydata->motorLeft);
-    // mydata->motorRight = max(0, mydata->motorRight);
+    else if (sensorLeft && sensorRight) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    } 
 
-    // mydata->motorLeft = min(motorFull, mydata->motorLeft);
-    // mydata->motorRight = min(motorFull, mydata->motorRight);
+    else if ((sensorFront && sensorRight)) {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    }
 
+    else if ((sensorFront && sensorLeft) || sensorFront) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    }
+    
+    else {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+    }
 
     r = 100 * sensorFront;
     g = 100 * sensorRight;
     b = 100 * sensorLeft;
 
-
     pogobot_led_setColor(r, g, b);
-    pogobot_motor_set(motorL, mydata->motorLeft);
-    pogobot_motor_set(motorR, mydata->motorRight);
 }
 
 
@@ -138,9 +143,11 @@ void user_init(void) {
         pogobot_infrared_set_power(3);
         srand(pogobot_helper_getRandSeed()); // Initialiser le générateur de nombres aléatoires
 
-        // Initialisation des moteurs
-        // mydata->motorLeft = motorHalf;
-        // mydata->motorRight = motorHalf;
+        uint16_t power_mem[3];
+        pogobot_motor_power_mem_get(power_mem);
+
+        mydata->motorLeft = power_mem[1];
+        mydata->motorRight = power_mem[0];
     }
     
     
