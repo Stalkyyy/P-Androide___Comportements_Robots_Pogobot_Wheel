@@ -5,6 +5,14 @@
 
 #define MAX_ROBOTS 10
 
+uint8_t sens_robot[4][4] = {
+//   F  R  B  L
+    {1, 1, 0, 3},
+    {3, 1, 1, 0},
+    {0, 3, 1, 1},
+    {1, 0, 3, 1},
+};
+
 // "Global" variables should be inserted within the USERDATA struct.
 // /!\  In simulation, don't declare non-const global variables outside this struct, elsewise they will be shared among all agents (and this is not realistic).
 typedef struct {
@@ -158,11 +166,20 @@ void user_step(void) {
             if(max_id == pogobot_helper_getid()){
                 pogobot_led_setColor(0, 255, 0); 
             } else {
+
+                // si mvts inverses 
                 if(senseurs_detection[max_dir] == max_dir){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else { // si dans le même sens, il recopie le mouvement
                     move_id = last_moves[max_dir];
                 }
+
+                // avec le tableau de sens
+                /*move_id = sens_robot[max_dir][senseurs_detection[max_dir]];
+                if(move_id == 0){
+                    move_id = last_moves[max_dir]; 
+                }*/
+
                 // on récupère les ids des voisins qu'on suit 
                 memcpy(mydata->id_robots_suivis, id_robots_dir[max_dir], MAX_ROBOTS * sizeof(uint8_t));
                 mydata->nb_robots_suivis = nb_robots_max;
@@ -174,18 +191,36 @@ void user_step(void) {
             // si y a égalité, on prend l'une des directions exécutées au hasard
             if(cpt_egalite > 1){
                 uint8_t idx = rand() % cpt_egalite;
+
+                // si mvts inverses
                 if(senseurs_detection[dir_egal[idx]] == dir_egal[idx]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else { // si dans le même sens, il recopie le mouvement
                     move_id = last_moves[dir_egal[idx]];
                 }
+
+                // avec le tableau de sens
+                /*move_id = sens_robot[dir_egal[idx]][senseurs_detection[dir_egal[idx]]];
+                if(move_id == 0){
+                    move_id = last_moves[dir_egal[idx]]; 
+                }*/
+
                 idx_robots_dir = dir_egal[idx];
             } else {
+
+                // si mvts inverses
                 if(senseurs_detection[dir_egal[0]] == dir_egal[0]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else {
                     move_id = last_moves[dir_egal[0]];
                 }
+
+                // avec le tableau de sens
+                /*move_id = sens_robot[dir_egal[0]][senseurs_detection[dir_egal[0]]];
+                if(move_id == 0){
+                    move_id = last_moves[dir_egal[0]]; 
+                }*/
+
                 idx_robots_dir = dir_egal[0];
             }
 
