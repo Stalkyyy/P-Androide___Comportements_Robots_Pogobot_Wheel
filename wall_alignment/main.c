@@ -59,30 +59,37 @@ void user_step(void) {
     pogobot_infrared_sendLongMessage_omniSpe(msg_envoi, sizeof(msg_envoi));
 
     // Réception d'un message
-    int move_id = -1;
+    uint8_t move_id = 5;
     pogobot_infrared_update();
-    int32_t end_waiting_time = 1000; // au cas ù aucun mur est détecté et éviter des problèmes dans les conditions
+    int32_t end_waiting_time = 0; // le temps mis pour envoyer et recevoir une détection du mur
 
-    // trouver un moyen pour se diriger vers le mur le plus proche
     while(pogobot_infrared_message_available() >= 1){
-
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
 
-        // si mur détecté (revoir la condition selon ce que renvoie le mur)
-        if(msg.payload[1] != 42){ // voir pour faire avec l'id sinon
+        // si mur détecté
+        if(msg.header._packet_type != ir_t_user){
             move_id = msg.header._receiver_ir_index;
-            // le temps mis pour envoyer et recevoir une détection du mur
-            end_waiting_time = pogobot_stopwatch_get_elapsed_microseconds(&mydata->waiting_time);
-            printf("Temps mis pour détecter le mur : %d micro secondes\n", end_waiting_time);
+            end_waiting_time += pogobot_stopwatch_get_elapsed_microseconds(&mydata->waiting_time);
+        } else { // c'est un robot et qu'il se trouve devant nous
+            if(msg.header._receiver_ir_index == 0 && msg.header._sender_ir_index == 2){
+                move_id = 1; // on change de direction pour ne plus être derrière lui
+            }
         }
     }
+
+    // si aucune détection de mur
+    if(end_waiting_time == 0){
+        end_waiting_time = 1000;
+    }
+
+    printf("Temps mis pour détecter le mur : %d micro secondes\n", end_waiting_time);
 
     // Mouvement
 
     // si on a reçu la détection du mur rapidement (temps à revoir selon les tests)
     // alors on s'arrête devant le mur
-    if(end_waiting_time <= 100) { // en microseconds
+    if(end_waiting_time <= 200) { // en microseconds
         pogobot_motor_set(motorL, motorStop);
         pogobot_motor_set(motorR, motorStop);
         pogobot_led_setColor(255, 0, 0);
