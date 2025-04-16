@@ -5,13 +5,17 @@
 
 #define MAX_ROBOTS 10
 
-uint8_t sens_robot[4][4] = {
+#define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
+
+
+/*uint8_t sens_robot[4][4] = {
 //   F  R  B  L
     {1, 1, 0, 3},
     {3, 1, 1, 0},
     {0, 3, 1, 1},
     {1, 0, 3, 1},
-};
+};*/
+
 
 // "Global" variables should be inserted within the USERDATA struct.
 // /!\  In simulation, don't declare non-const global variables outside this struct, elsewise they will be shared among all agents (and this is not realistic).
@@ -22,6 +26,13 @@ typedef struct {
     uint8_t last_move; // le mouvement précédemment effectué 
     uint8_t id_robots_suivis[MAX_ROBOTS]; // la liste des ids des robots qu'on suit
     uint8_t nb_robots_suivis; // le nombre des voisins qu'on suit
+
+    uint16_t motorLeft;
+    uint8_t dirLeft;
+
+    uint16_t motorRight;
+    uint8_t dirRight;
+
 } USERDATA;
 
 // Call this macro in the same file (.h or .c) as the declaration of USERDATA
@@ -31,6 +42,54 @@ DECLARE_USERDATA(USERDATA);
 REGISTER_USERDATA(USERDATA);
 // Now, members of the USERDATA struct can be accessed through mydata->MEMBER. E.g. mydata->data_foo
 //  On real robots, the compiler will automatically optimize the code to access member variables as if they were true globals.
+
+// Si le robot a des roues, il ne change pas sa puissance, mais uniquement la direction du moteur.
+// Sinon (robot à brosse), il change la puissance des moteurs.
+
+
+void move_front(void) {
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, mydata->motorRight);
+    } else {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+    }
+}
+
+void move_left(void) {
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
+        pogobot_motor_dir_set(motorR, mydata->motorRight);
+    } else {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    }
+}
+
+void move_right(void) {
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, (mydata->motorRight + 1 % 2));
+    } else {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    }
+}
+
+void move_stop(void) {
+    pogobot_motor_set(motorL, motorStop);
+    pogobot_motor_set(motorR, motorStop);
+}
 
 
 // Init function. Called once at the beginning of the program (cf 'pogobot_start' call in main())
@@ -58,6 +117,20 @@ void user_init(void) {
     mydata->last_move = 5;
     //mydata->id_robots_suivis = {0}; // id du robot qu'on suit 
     mydata->nb_robots_suivis = 0;
+
+
+    // Récupération des données de calibration des robots
+
+    uint16_t power_mem[3];
+    uint8_t dir_mem[3];
+
+    pogobot_motor_power_mem_get(power_mem);
+    mydata->motorLeft = power_mem[1];
+    mydata->motorRight = power_mem[0];
+
+    pogobot_motor_dir_mem_get(dir_mem);
+    mydata->dirLeft = dir_mem[1];
+    mydata->dirRight = dir_mem[0];
 }
 
 
@@ -242,14 +315,17 @@ void user_step(void) {
     // s'il le détecte à droite alors il va à droite ou s'il le détecte en arrière il va à droite
     // et s'il le détecte en face il tourne un peu à droite pour éviter de le foncer dedans et ensuite le suivre
     if (move_id == 1 || move_id == 2) { 
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorStop);
+        //pogobot_motor_set(motorL, motorHalf);
+        //pogobot_motor_set(motorR, motorStop);
+        move_right();
     } else if (move_id == 3) { // s'il le détecte à gauche alors il tourne à gauche
-        pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorHalf);
+        //pogobot_motor_set(motorL, motorStop);
+        //pogobot_motor_set(motorR, motorHalf);
+        move_left();
     } else { // si on n'a reçu aucun message
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorHalf);
+        //pogobot_motor_set(motorL, motorHalf);
+        //pogobot_motor_set(motorR, motorHalf);
+        move_front();
     }
 }
 
