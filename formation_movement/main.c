@@ -164,13 +164,13 @@ void user_step(void) {
                     move_id = last_moves[max_dir];
                 }
                 // on récupère les ids des voisins qu'on suit 
-                memcpy(mydata->id_robots_suivis, id_robots_dir[move_id], MAX_ROBOTS * sizeof(uint8_t));
-                mydata->nb_robots_suivis = cpt_dir[move_id];
+                memcpy(mydata->id_robots_suivis, id_robots_dir[max_dir], MAX_ROBOTS * sizeof(uint8_t));
+                mydata->nb_robots_suivis = nb_robots_max;
                 pogobot_led_setColor(255, 0, 0);
             }
     
         } else { // s'il détecte un ou plusieurs groupes
-
+            uint8_t idx_robots_dir = 0;
             // si y a égalité, on prend l'une des directions exécutées au hasard
             if(cpt_egalite > 1){
                 uint8_t idx = rand() % cpt_egalite;
@@ -179,17 +179,19 @@ void user_step(void) {
                 } else { // si dans le même sens, il recopie le mouvement
                     move_id = last_moves[dir_egal[idx]];
                 }
+                idx_robots_dir = dir_egal[idx];
             } else {
                 if(senseurs_detection[dir_egal[0]] == dir_egal[0]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else {
                     move_id = last_moves[dir_egal[0]];
                 }
+                idx_robots_dir = dir_egal[0];
             }
 
             // on récupère les ids des voisins qu'on suit 
-            memcpy(mydata->id_robots_suivis, id_robots_dir[move_id], MAX_ROBOTS * sizeof(uint8_t));
-            mydata->nb_robots_suivis = cpt_dir[move_id];
+            memcpy(mydata->id_robots_suivis, id_robots_dir[idx_robots_dir], MAX_ROBOTS * sizeof(uint8_t));
+            mydata->nb_robots_suivis = nb_robots_max;
             pogobot_led_setColor(255, 0, 0);
         }
 
