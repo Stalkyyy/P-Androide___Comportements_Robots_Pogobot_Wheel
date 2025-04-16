@@ -1,16 +1,26 @@
 
 // Main include for pogobots, both for real robots and for simulations
 #include "pogobase.h"
+#include <stdlib.h>
+#include <math.h>
+#ifndef M_PI_4 // Car parfois il n'est pas inclus dans math.h
+#define M_PI_4 0.78539816339744830962 // Valeur de PI/4
+#endif
 
 // "Global" variables should be inserted within the USERDATA struct.
 // /!\  In simulation, don't declare non-const global variables outside this struct, elsewise they will be shared among all agents (and this is not realistic).
+
+//Définition de Variables Globales
+#define DETECTION_TIMEOUT_MS 4000 // Temps d'attente avant de considérer qu'il n'y a plus de robots
+#define DISPERSION_INERTIE_TICKS 30 // Nombre de ticks d'inertie avant de changer de direction
 typedef struct {
     // Put all global variables you want here.
     uint8_t data_foo[8];
     time_reference_t timer_it;
     int direction_counts[4]; //Compteur de message reçus selon la direction devant, droite, derriere, gauche 
-    int avoidance_step; // Gere l'écartement progressif des robots quand ils se croisent
-} USERDATA;
+
+    uint32_t last_detect; // 
+} USERDATA; 
 
 // Call this macro in the same file (.h or .c) as the declaration of USERDATA
 DECLARE_USERDATA(USERDATA);
@@ -42,10 +52,14 @@ void user_init(void) {
     
     pogobot_infrared_set_power(1); //Puissance pour communication InfraRouge
 
+    //Initialisation des variables
+    srand(pogobot_helper_getRandSeed()); // Genere une seed aléatoire avec la tension de la batterie
+    mydata->last_detect = current_time_milliseconds(); // Démarre immédiatement 
+
 }
 
 void ping_robots(void) {
-    uint8_t ping_message[1] = {42}; // Mess arbitraire 
+    uint8_t ping_message[1] = {rand()%255}; // Mess avcec val aléatoire pour que ca parte dans toute les directions
     pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
     
 }
@@ -67,12 +81,12 @@ void update_direction_count(void){
         pogobot_infrared_recover_next_message(&mess);
 
 
-         //Vérifie si le messsage est un mur 
+         /*Vérifie si le messsage est un mur 
          if (mess.payload[0] == 99){
             printf("MUR DETECTE\n");
             mydata->direction_counts[0] = 1; // Dit que le mur est devant
             continue;
-        }
+        } */
 
         //Récupération de la direction du capteur ayant reçu le message
         int dir = mess.header._receiver_ir_index;
@@ -89,80 +103,76 @@ void perform_dispersion_movement(void){
     for (int i =0; i <4; i++){
         tot += dir_count[i];
     }
-    //Detection de mur (basée sur le temps, pas optimal car peut faire demi tour meme si il n'y a pas de mur, mais il n'aura pas rencontré de robots)
-    if (dir_count[0] > 0){
-        // On fait demi tour
-        pogobot_motor_set(motorL, -motorThreeQuarter); // Vitesse négative pour marche arrière
-        pogobot_motor_set(motorR, -motorThreeQuarter);
-        pogobot_motor_set(motorL, motorThreeQuarter);
-        pogobot_motor_set(motorR, motorThreeQuarter);
-        pogobot_led_setColor(255,0,0); //Rouge normalement
-        
-    } else if (tot ==0){
-        //Si aucun robot autour, On avance tout droit
-        mydata->avoidance_step = 0; // On réinitialise le l'état d'évitement
-        pogobot_motor_set(motorL, motorThreeQuarter);
-        pogobot_motor_set(motorR, motorThreeQuarter);
-        pogobot_led_setColor(0,255,0); //Vert normalement 
-    }else{
-        // Si il y a un robot, tout en tournant en s'écartant progressivement
-        mydata->avoidance_step++;
-        
-        // Alterne la direction de rotation en fonction de l'état d'évitement (pair ou impair)
-        if (mydata->avoidance_step % 2 == 0) {
-            pogobot_motor_set(motorL, motorQuarter);
-            pogobot_motor_set(motorR, motorThreeQuarter);
-        } else {
-            pogobot_motor_set(motorL, motorThreeQuarter);
-            pogobot_motor_set(motorR, motorQuarter);
-        }
+    uint32_t now = current_time_milliseconds(); // Temps actuel
+    int x;
+    int y;
+    //Vecteurs unitaire par message recus
+    x += dir_count[1]; //droite 
+    x -= dir_count[3]; //gauche
+    y += dir_count[0]; //avant$
+    y -= dir_count[2]; //arrière
+    
+    //calcul du vect opposé pour partir
+    int dx = -x;
+    int dy = -y;
 
-        // LED orange pour indiquer l'état d'évitement
-        pogobot_led_setColor(255, 128, 0);
-    } 
-    
-    
     if (tot > 0){
+        mydata->last_detect = now; // On a detecter un robot, on reset le timer
+    }
 
-        //Direction la moins "encombrée"; c'est à dire la ou il faut aller ! 
 
-        int min_dir = 0;
-        for(int i = 0; i <4; i++){
-            if(dir_count[i] < dir_count[min_dir]){
-                min_dir = i;
-            }
-        }
-
-        //Logique de mouvement basé sur les différentes directions
-        switch(min_dir){
-            case 0: // avant
-                pogobot_motor_set(motorL,motorHalf);
-                pogobot_motor_set(motorR,motorHalf);
-                break;
-            case 1: // droite 
-                pogobot_motor_set(motorL, motorQuarter);
-                pogobot_motor_set(motorR,motorStop);
-                break;
-            case 2: // arrière 
-            pogobot_motor_set(motorL, -motorThreeQuarter); 
-            pogobot_motor_set(motorR, -motorThreeQuarter);
+    if (tot == 0){
+        int dir = rand()% 4;
+        switch(dir){
+            case 0:
                 pogobot_motor_set(motorL, motorHalf);
                 pogobot_motor_set(motorR, motorHalf);
-                break;   
-            case 3: // gauche
+                break;
+            case 1:
+                pogobot_motor_set(motorL, motorHalf);
+                pogobot_motor_set(motorR, motorStop);
+                break;
+            case 2:
+                pogobot_motor_set(motorL, -motorThreeQuarter);
+                pogobot_motor_set(motorR, -motorThreeQuarter);
+                break;
+            case 3:
                 pogobot_motor_set(motorL, motorStop);
-                pogobot_motor_set(motorR, motorQuarter);
+                pogobot_motor_set(motorR, motorHalf);
                 break;
         }
-
-        //LED Orange, cela veut dire que c'est en etat de dispersion
-        pogobot_led_setColor(255,128,0);
+        pogobot_led_setColor(0,0,255); //Bleu normalement   
+        return;
     }
+    
+
+    float angle = atan2(dy, dx); // Calcul de l'angle opposé
+
+    if (angle > -M_PI_4 && angle <= M_PI_4){
+        // On avance
+        pogobot_motor_set(motorL, motorThreeQuarter);
+        pogobot_motor_set(motorR, motorThreeQuarter);
+    } else if (angle > M_PI_4 && angle <= 3*M_PI_4){
+        // On tourne à gauche
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorThreeQuarter);
+    } else if (angle < -M_PI_4 && angle >= -3*M_PI_4){
+        // On tourne à droite
+        pogobot_motor_set(motorL, motorThreeQuarter);
+        pogobot_motor_set(motorR, motorStop);
+        
+    } else {
+        // On recule
+        pogobot_motor_set(motorL, -motorThreeQuarter);
+        pogobot_motor_set(motorR, -motorThreeQuarter);
+        
+    }
+    pogobot_let_setColor(255,128,0); //Orange normalement
 }
 
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
-  ping_wall(); // Envoi un ping InfraRouge pour détecter les murs
+  //ping_wall(); // Envoi un ping InfraRouge pour détecter les murs
   ping_robots();  //Envoi un ping InfraRouge
   update_direction_count(); // Analyse les Messages InfraRouge reçus
   perform_dispersion_movement(); // Bouge en Direction opposée aux autres 
