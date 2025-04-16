@@ -28,20 +28,6 @@ typedef union msg_template {
     MSG msg_values;
 } message;
 
-
-// struct du message envoyé par le leader aux autres pour les prévenir du leader élu (contient id du sender = leader)
-// typedef struct {
-
-//     uint16_t leader_id; // contenu du msg
-// } LEADERMSG;
-
-// #define MSG_LEAD_SIZE sizeof(LEADERMSG) // Number of bytes
-
-// typedef union msg_leader_template {
-//     uint8_t msg_array[MSG_LEAD_SIZE];
-//     LEADERMSG msg_values;
-// } msg_leader;
-
 // struct du message concernant position du leader à suivre
 typedef struct {
     uint16_t id; // id du sender ici
@@ -60,6 +46,7 @@ typedef struct {
     uint16_t nb_neighbours; // normalement, il devrait y avoir max 2 voisins car disposition en file indienne
     uint16_t neighbours_ids[2];
     uint16_t predecessor_id; // id du robot à suivre dans la file indienne
+    int retransmit_count; // nombre de fois on retransmet le message du leader élu
 } USERDATA;
 
 DECLARE_USERDATA(USERDATA);
@@ -87,6 +74,7 @@ void user_init(void) {
     for (uint8_t i = 0; i < 2; i++){
         mydata->neighbours_ids[i] = UINT16_MAX;
     }
+    mydata->retransmit_count=5; // on teste avec 5 pour l'instant
 
     pogobot_led_setColor(120, 60, 0); // jaune avant et pendant l'élection du leader
 }
@@ -94,10 +82,10 @@ void user_init(void) {
 int id_already_received(uint16_t id){
     for (uint8_t i = 0; i < 2; i++){
         if(mydata->neighbours_ids[i] == id){
-            return 1; //true == 1
+            return 1;
         }
     }
-    return 0; //false
+    return 0;
 }
 
 void add_id_received(uint16_t id){
@@ -129,9 +117,13 @@ void detect_neighbours(void) {
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
+        // uint16_t sender_id = msg.header._sender_id;
         if (msg.payload[0] != mydata->my_id && id_already_received(msg.payload[0])==0 && mydata->nb_neighbours<=1){
+        // if (sender_id != mydata->my_id && id_already_received(sender_id)==0 && mydata->nb_neighbours<=1){
             add_id_received(msg.payload[0]);
+            // add_id_received(sender_id);
             mydata->nb_neighbours++;
+            // printf("Robot %d a trouvé voisin %d!\n", mydata->my_id, sender_id);
             printf("Robot %d a trouvé voisin %d!\n", mydata->my_id, msg.payload[0]);
         }
     }
@@ -162,6 +154,18 @@ void transmission_msg(int type, uint16_t id){
 
     for ( uint16_t i = 0; i != MSG_SIZE; i++ )
         data[i] = msg.msg_array[i];
+    
+    if (type == ID_LEADER){ // envoi du message plusieurs fois (5 fois max à intervalle de tps régulier) car non fait une fois les rôles établis
+        while (mydata->retransmit_count > 0){
+            static uint32_t last_sent = 0;
+            if (pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it) - last_sent > 3000) { //après 3 sec
+                printf("Temps intervalle %d", pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it) - last_sent);
+                pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)(data), MSG_SIZE); 
+                last_sent = pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it);
+                mydata->retransmit_count--;
+            }
+        }
+    }
     
     pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)(data), MSG_SIZE);  
 }
@@ -324,6 +328,21 @@ void user_step(void) {
         set_leader_and_order();
         // }
     }
+
+    // if (mydata->has_leader == 1 && mydata->retransmit_count >0){
+    //     static uint32_t last_sent = 0;
+    //     if (pogobot_stopwatch_elapsed_ms(&mydata->timer_it) - last_sent > 300) {
+    //         transmission_msg(ID_LEADER, mydata->my_id);
+    //         last_sent = pogobot_stopwatch_elapsed_ms(&mydata->timer_it);
+    //     }
+    //     transmission_msg(ID_LEADER, mydata->my_id); //si ce n'est pas l'id du leader ce n'est pas si grave
+    //     mydata->retransmit_count--;
+    // }
+
+    // if (pogobot_stopwatch_elapsed_ms(&mydata->timer_it) - last_sent > 300) {
+    //     transmission_msg(ID_LEADER, mydata->my_id);
+    //     last_sent = pogobot_stopwatch_elapsed_ms(&mydata->timer_it);
+    // }
 
     // printf("Has leader? %d\n", mydata->has_leader);
     // printf("Is leader? %d\n",  mydata->is_leader);
