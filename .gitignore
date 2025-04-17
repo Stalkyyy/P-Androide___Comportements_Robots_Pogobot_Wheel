@@ -24,6 +24,14 @@ random_walk/random_walk
 wall_alignment/wall_alignment
 
 
+dispersion/dispersion
+formation_movement/formation_movement
+leader_movement/leader_movement
+phototaxis/phototaxis
+random_walk/random_walk
+wall_alignment/wall_alignment
+
+
 # Prerequisites
 *.d
 
