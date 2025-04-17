@@ -6,7 +6,7 @@
 
 #define MAX_ROBOTS 10
 
-#define HAS_WHEEL false // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
+#define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
 // NB : on tourne obligatoirement à droite quand les sens des robots sont opposés
 // [senseur récepteur][senseur émetteur]
@@ -58,7 +58,7 @@ void move_front(void) {
         pogobot_motor_set(motorR, mydata->motorRight);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, mydata->motorRight);
+        pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
@@ -71,7 +71,7 @@ void move_left(void) {
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
-        pogobot_motor_dir_set(motorR, mydata->motorRight);
+        pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
         pogobot_motor_set(motorL, motorStop);
         pogobot_motor_set(motorR, motorHalf);
@@ -84,7 +84,7 @@ void move_right(void) {
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->motorRight + 1 % 2));
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
