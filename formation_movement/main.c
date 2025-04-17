@@ -1,5 +1,6 @@
 // Main include for pogobots, both for real robots and for simulations
 #include "pogobase.h"
+#include <math.h>
 
 #define INFRARED_POWER 3 // 1, 2, 3
 
@@ -33,6 +34,9 @@ typedef struct {
 
     uint16_t motorRight;
     uint8_t dirRight;
+
+    float angle_z;
+    time_reference_t timer_gyro;
 
 } USERDATA;
 
@@ -137,18 +141,34 @@ void user_init(void) {
         mydata->motorLeft = motorHalf;
         mydata->motorRight = motorHalf;
     }
+
+    mydata->angle_z = 0.0f;
+    pogobot_stopwatch_reset(&mydata->timer_gyro);
 }
 
 
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
 
+    // récupération gyroscope
+    float acc[3];
+    float gyro[3];
+    pogobot_imu_read(acc, gyro);
+
+    // calcul gyroscope
+    float dist = pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_gyro) / 1e6f;
+    pogobot_stopwatch_reset(&mydata->timer_gyro); 
+
+    mydata->angle_z += gyro[2] * dist;
+
+
     // Transmission d'un message
-    uint8_t msg_envoi[MAX_ROBOTS+2];
+    uint8_t msg_envoi[MAX_ROBOTS+3];
     msg_envoi[0] = mydata->last_move;
     msg_envoi[1] = mydata->nb_robots_suivis;
+    msg_envoi[2] = mydata->angle_z;
     for(int i=0; i<MAX_ROBOTS; i++){
-        msg_envoi[i+2] = mydata->id_robots_suivis[i];
+        msg_envoi[i+3] = mydata->id_robots_suivis[i];
     }
     
     pogobot_infrared_sendLongMessage_omniSpe(msg_envoi, sizeof(msg_envoi));
@@ -161,7 +181,7 @@ void user_step(void) {
     uint8_t id_robots_dir[4][MAX_ROBOTS] = {0}; // stockage des ids des robots détectés en fct des directions
 
     uint8_t last_moves[4] = {0}; // on garde le dernier mouvement effectué par les formations
-    uint8_t senseur_emetteur[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
+    //uint8_t senseur_emetteur[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
     
     while(pogobot_infrared_message_available()>=1){
         message_t msg;
@@ -172,7 +192,7 @@ void user_step(void) {
             uint8_t skip = 0;
             // si c'est l'un des robots qui nous suit déjà alors on l'ignore
             for(int i=0; i<msg.payload[1]; i++){ 
-                if(msg.payload[i+2] == pogobot_helper_getid()){
+                if(msg.payload[i+3] == pogobot_helper_getid()){
                     skip = 1;
                     break;
                 }
@@ -201,7 +221,19 @@ void user_step(void) {
                 last_moves[msg.header._receiver_ir_index] = msg.payload[0];
 
                 // on stocke par quel senseur le message a été envoyé
-                senseur_emetteur[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
+                //senseur_emetteur[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
+
+                float angle_autre = *((float *)&msg.payload[2]);  // récupérer le float à partir des bytes
+                float erreur = angle_autre - mydata->angle_z;
+                if (fabsf(erreur) > 0.2f) { // seuil en radians
+                    if (erreur > 0) {
+                        move_id = 1;
+                    } else {
+                        move_id = 3;
+                    }
+                } else {
+                    move_id = 0;
+                }
             }
         } 
         // si on détecte autre / un mur (à implémenter selon ce que va donner wall_allignment)
@@ -265,13 +297,18 @@ void user_step(void) {
                 }*/
 
                 // Option 2 : avec le tableau de sens
-                move_id = sens_robot[max_dir][senseur_emetteur[max_dir]];
+                /*move_id = sens_robot[max_dir][senseur_emetteur[max_dir]];
                 if(move_id == 0){
                     move_id = last_moves[max_dir]; 
-                }
+                }*/
 
                 // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
                 //move_id = last_moves[max_dir];
+
+                // Option 4 : gyroscope
+                if(move_id == 0){
+                    move_id = last_moves[max_dir];
+                }
 
                 // on récupère les ids des voisins qu'on suit 
                 memcpy(mydata->id_robots_suivis, id_robots_dir[max_dir], MAX_ROBOTS * sizeof(uint8_t));
@@ -299,13 +336,18 @@ void user_step(void) {
                 }*/
 
                 // Option 2 : avec le tableau de sens
-                move_id = sens_robot[dir_egal[idx]][senseur_emetteur[dir_egal[idx]]];
+                /*move_id = sens_robot[dir_egal[idx]][senseur_emetteur[dir_egal[idx]]];
                 if(move_id == 0){
                     move_id = last_moves[dir_egal[idx]]; 
-                }
+                }*/
 
                 // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
                 //move_id = last_moves[dir_egal[idx]];
+
+                // Option 4 : gyroscope
+                if(move_id == 0){
+                    move_id = last_moves[dir_egal[idx]];
+                }
 
                 idx_robots_dir = dir_egal[idx];
             } else {
@@ -318,13 +360,18 @@ void user_step(void) {
                 }*/
 
                 // Option 2 : avec le tableau de sens
-                move_id = sens_robot[dir_egal[0]][senseur_emetteur[dir_egal[0]]];
+                /*move_id = sens_robot[dir_egal[0]][senseur_emetteur[dir_egal[0]]];
                 if(move_id == 0){
                     move_id = last_moves[dir_egal[0]]; 
-                }
+                }*/
 
                 // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
                 //move_id = last_moves[dir_egal[0]];
+
+                // Option 4 : gyroscope
+                if(move_id == 0){
+                    move_id = last_moves[dir_egal[0]];
+                }
 
                 idx_robots_dir = dir_egal[0];
             }
