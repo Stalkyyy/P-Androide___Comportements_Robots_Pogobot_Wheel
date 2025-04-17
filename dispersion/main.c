@@ -49,32 +49,55 @@ REGISTER_USERDATA(USERDATA);
 
 // Fonction pour avancer tout droit
 void move_front(void) {
-    pogobot_motor_set(motorL, mydata->motorLeft);
-    pogobot_motor_set(motorR, mydata->motorRight);
-    pogobot_led_setColor(0, 255, 0); // LED verte : avancer normalement
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, mydata->motorRight);
+    } else {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+    }
 }
 
 // Fonction pour tourner à gauche
 void move_left(void) {
     mydata->lastTurn = LEFT_TURN;
-    pogobot_motor_set(motorL, motorStop);
-    pogobot_motor_set(motorR, mydata->motorRight);
-    pogobot_led_setColor(255, 255, 0); // LED jaune : tourner à gauche
+
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
+        pogobot_motor_dir_set(motorR, mydata->motorRight);
+    } else {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    }
 }
 
 // Fonction pour tourner à droite
 void move_right(void) {
     mydata->lastTurn = RIGHT_TURN;
-    pogobot_motor_set(motorL, mydata->motorLeft);
-    pogobot_motor_set(motorR, motorStop);
-    pogobot_led_setColor(255, 255, 0); // LED jaune : tourner à droite
+
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, (mydata->motorRight + 1 % 2));
+    } else {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    }
 }
+
 
 // Fonction pour s'arrêter
 void move_stop(void) {
     pogobot_motor_set(motorL, motorStop);
     pogobot_motor_set(motorR, motorStop);
-    pogobot_led_setColor(255, 0, 0); // LED rouge : arrêt
 }
 
 // Fonction pour mettre à jour les directions et les distances
