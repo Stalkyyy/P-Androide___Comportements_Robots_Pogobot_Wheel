@@ -5,16 +5,17 @@
 
 #define MAX_ROBOTS 10
 
-#define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
+#define HAS_WHEEL false // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
-
-/*uint8_t sens_robot[4][4] = {
+// NB : on tourne obligatoirement à droite quand les sens des robots sont opposés
+// [senseur récepteur][senseur émetteur]
+uint8_t sens_robot[4][4] = {
 //   F  R  B  L
     {1, 1, 0, 3},
     {3, 1, 1, 0},
     {0, 3, 1, 1},
     {1, 0, 3, 1},
-};*/
+};
 
 
 // "Global" variables should be inserted within the USERDATA struct.
@@ -102,7 +103,7 @@ void user_init(void) {
     pogobot_stopwatch_reset(&mydata->timer_it);
 
     // Set main loop frequency, message sending frequency, message processing frequency
-    main_loop_hz = 60;      // Call the 'user_step' function 60 times per second
+    main_loop_hz = 45;      // Call the 'user_step' function 60 times per second
     max_nb_processed_msg_per_tick = 0;
     // Specify functions to send/transmit messages. See the "hanabi" example to see message sending/processing in action!
     msg_rx_fn = NULL;       // If Null, no reception of message
@@ -124,13 +125,18 @@ void user_init(void) {
     uint16_t power_mem[3];
     uint8_t dir_mem[3];
 
-    pogobot_motor_power_mem_get(power_mem);
-    mydata->motorLeft = power_mem[1];
-    mydata->motorRight = power_mem[0];
+    if(HAS_WHEEL){
+        pogobot_motor_power_mem_get(power_mem);
+        mydata->motorLeft = power_mem[1];
+        mydata->motorRight = power_mem[0];
 
-    pogobot_motor_dir_mem_get(dir_mem);
-    mydata->dirLeft = dir_mem[1];
-    mydata->dirRight = dir_mem[0];
+        pogobot_motor_dir_mem_get(dir_mem);
+        mydata->dirLeft = dir_mem[1];
+        mydata->dirRight = dir_mem[0];
+    } else {
+        mydata->motorLeft = motorHalf;
+        mydata->motorRight = motorHalf;
+    }
 }
 
 
@@ -155,7 +161,7 @@ void user_step(void) {
     uint8_t id_robots_dir[4][MAX_ROBOTS] = {0}; // stockage des ids des robots détectés en fct des directions
 
     uint8_t last_moves[4] = {0}; // on garde le dernier mouvement effectué par les formations
-    uint8_t senseurs_detection[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
+    uint8_t senseur_emetteur[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
     
     while(pogobot_infrared_message_available()>=1){
         message_t msg;
@@ -164,9 +170,8 @@ void user_step(void) {
         // si on détecte un robot
         if(msg.header._packet_type == ir_t_user){
             uint8_t skip = 0;
-
             // si c'est l'un des robots qui nous suit déjà alors on l'ignore
-            for(int i=0; i<msg.payload[1]; i++){
+            for(int i=0; i<msg.payload[1]; i++){ 
                 if(msg.payload[i+2] == pogobot_helper_getid()){
                     skip = 1;
                     break;
@@ -176,17 +181,28 @@ void user_step(void) {
                 continue;
             }
 
-            // on stocke l'id du robot qui a envoyé la direction
-            id_robots_dir[msg.header._receiver_ir_index][cpt_dir[msg.header._receiver_ir_index]] = msg.header._sender_id;
-            
-            // on stocke le nombre de robots ayant envoyé cette direction
-            cpt_dir[msg.header._receiver_ir_index] ++;
+            // on évite les doublond d'ids à suivre
+            uint8_t dejaDedans = 0;
+            for(int i=0; i<cpt_dir[msg.header._receiver_ir_index]; i++){
+                if(id_robots_dir[msg.header._receiver_ir_index][i] == msg.header._sender_id){
+                    dejaDedans = 1;
+                    break;
+                }
+            }
+              
+            if(!dejaDedans){
+                // on stocke l'id du robot qui a envoyé la direction
+                id_robots_dir[msg.header._receiver_ir_index][cpt_dir[msg.header._receiver_ir_index]] = msg.header._sender_id;
 
-            // on stocke le dernier mouvement dans le champ adapté
-            last_moves[msg.header._receiver_ir_index] = msg.payload[0];
+                // on stocke le nombre de robots ayant envoyé cette direction
+                cpt_dir[msg.header._receiver_ir_index] ++;
 
-            // on stocke par quel senseur le message a été envoyé
-            senseurs_detection[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
+                // on stocke le dernier mouvement dans le champ adapté
+                last_moves[msg.header._receiver_ir_index] = msg.payload[0];
+
+                // on stocke par quel senseur le message a été envoyé
+                senseur_emetteur[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
+            }
         } 
         // si on détecte autre / un mur (à implémenter selon ce que va donner wall_allignment)
         else {
@@ -238,25 +254,35 @@ void user_step(void) {
             }
             if(max_id == pogobot_helper_getid()){
                 pogobot_led_setColor(0, 255, 0); 
-            } else {
-
-                // si mvts inverses 
-                if(senseurs_detection[max_dir] == max_dir){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
+                memset(mydata->id_robots_suivis, 0, MAX_ROBOTS * sizeof(uint8_t));
+                mydata->nb_robots_suivis = 0;
+            } else {                
+                // Option 1 : si mvts inverses 
+                /*if(senseur_emetteur[max_dir] == max_dir){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else { // si dans le même sens, il recopie le mouvement
                     move_id = last_moves[max_dir];
-                }
+                }*/
 
-                // avec le tableau de sens
-                /*move_id = sens_robot[max_dir][senseurs_detection[max_dir]];
+                // Option 2 : avec le tableau de sens
+                move_id = sens_robot[max_dir][senseur_emetteur[max_dir]];
                 if(move_id == 0){
                     move_id = last_moves[max_dir]; 
-                }*/
+                }
+
+                // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
+                //move_id = last_moves[max_dir];
 
                 // on récupère les ids des voisins qu'on suit 
                 memcpy(mydata->id_robots_suivis, id_robots_dir[max_dir], MAX_ROBOTS * sizeof(uint8_t));
                 mydata->nb_robots_suivis = nb_robots_max;
                 pogobot_led_setColor(255, 0, 0);
+
+                printf("Suivi des robots : ");
+                for(int i = 0; i < nb_robots_max; i++) {
+                    printf("%d ", mydata->id_robots_suivis[i]);
+                }
+                printf("\n");
             }
     
         } else { // s'il détecte un ou plusieurs groupes
@@ -265,34 +291,40 @@ void user_step(void) {
             if(cpt_egalite > 1){
                 uint8_t idx = rand() % cpt_egalite;
 
-                // si mvts inverses
-                if(senseurs_detection[dir_egal[idx]] == dir_egal[idx]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
+                // Option 1 : si mvts inverses
+                /*if(senseur_emetteur[dir_egal[idx]] == dir_egal[idx]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else { // si dans le même sens, il recopie le mouvement
                     move_id = last_moves[dir_egal[idx]];
-                }
+                }*/
 
-                // avec le tableau de sens
-                /*move_id = sens_robot[dir_egal[idx]][senseurs_detection[dir_egal[idx]]];
+                // Option 2 : avec le tableau de sens
+                move_id = sens_robot[dir_egal[idx]][senseur_emetteur[dir_egal[idx]]];
                 if(move_id == 0){
                     move_id = last_moves[dir_egal[idx]]; 
-                }*/
+                }
+
+                // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
+                //move_id = last_moves[dir_egal[idx]];
 
                 idx_robots_dir = dir_egal[idx];
             } else {
 
-                // si mvts inverses
-                if(senseurs_detection[dir_egal[0]] == dir_egal[0]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
+                // Option 1 : si mvts inverses
+                /*if(senseur_emetteur[dir_egal[0]] == dir_egal[0]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
                 } else {
                     move_id = last_moves[dir_egal[0]];
-                }
+                }*/
 
-                // avec le tableau de sens
-                /*move_id = sens_robot[dir_egal[0]][senseurs_detection[dir_egal[0]]];
+                // Option 2 : avec le tableau de sens
+                move_id = sens_robot[dir_egal[0]][senseur_emetteur[dir_egal[0]]];
                 if(move_id == 0){
                     move_id = last_moves[dir_egal[0]]; 
-                }*/
+                }
+
+                // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
+                //move_id = last_moves[dir_egal[0]];
 
                 idx_robots_dir = dir_egal[0];
             }
@@ -301,6 +333,12 @@ void user_step(void) {
             memcpy(mydata->id_robots_suivis, id_robots_dir[idx_robots_dir], MAX_ROBOTS * sizeof(uint8_t));
             mydata->nb_robots_suivis = nb_robots_max;
             pogobot_led_setColor(255, 0, 0);
+
+            printf("Suivi des robots : ");
+            for(int i = 0; i < nb_robots_max; i++) {
+                printf("%d ", mydata->id_robots_suivis[i]);
+            }
+            printf("\n");
         }
 
     } else { // s'il n'a vu personne d'intérêt, il continue sa vie
@@ -315,16 +353,10 @@ void user_step(void) {
     // s'il le détecte à droite alors il va à droite ou s'il le détecte en arrière il va à droite
     // et s'il le détecte en face il tourne un peu à droite pour éviter de le foncer dedans et ensuite le suivre
     if (move_id == 1 || move_id == 2) { 
-        //pogobot_motor_set(motorL, motorHalf);
-        //pogobot_motor_set(motorR, motorStop);
         move_right();
     } else if (move_id == 3) { // s'il le détecte à gauche alors il tourne à gauche
-        //pogobot_motor_set(motorL, motorStop);
-        //pogobot_motor_set(motorR, motorHalf);
         move_left();
     } else { // si on n'a reçu aucun message
-        //pogobot_motor_set(motorL, motorHalf);
-        //pogobot_motor_set(motorR, motorHalf);
         move_front();
     }
 }
