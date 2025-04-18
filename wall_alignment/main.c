@@ -18,7 +18,10 @@ typedef struct {
     uint16_t motorRight;
     uint8_t dirRight;
 
-    time_reference_t waiting_time;
+    uint8_t wall_detected;
+    uint32_t time_before_wall;
+    uint32_t motorLeftSlow;
+    uint32_t motorRightSlow;
 } USERDATA;
 
 // Call this macro in the same file (.h or .c) as the declaration of USERDATA
@@ -47,12 +50,29 @@ void move_front(void) {
     }
 }
 
+void move_back(void) {
+    if (HAS_WHEEL) {
+
+        mydata->motorLeftSlow /= 2;
+        mydata->motorRightSlow /= 2;
+
+        pogobot_motor_set(motorL, mydata->motorLeftSlow);
+        pogobot_motor_set(motorR, mydata->motorRightSlow);
+
+        pogobot_motor_dir_set(motorL, !mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, !mydata->dirRight);
+    } else {
+        pogobot_motor_set(motorL, mydata->motorLeftSlow);
+        pogobot_motor_set(motorR, mydata->motorRightSlow);
+    }
+}
+
 void move_left(void) {
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
-        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
+        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
         pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
         pogobot_motor_set(motorL, motorStop);
@@ -66,7 +86,7 @@ void move_right(void) {
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
@@ -120,24 +140,22 @@ void user_init(void) {
         mydata->motorRight = motorHalf;
     }
 
+    mydata->wall_detected = 0;
+    mydata->time_before_wall = 0;
+    mydata->motorLeftSlow = mydata->motorLeft;
+    mydata->motorRightSlow = mydata->motorRight;
 }
 
 
 // Step function. Called continuously at each step of the pogobot main loop
 void user_step(void) {
 
-    // Début du temps d'attente 
-    pogobot_stopwatch_reset(&mydata->waiting_time);
-
     // Transmission d'un message
     uint8_t msg_envoi[4];
-    msg_envoi[1] = 42;
     pogobot_infrared_sendLongMessage_omniSpe(msg_envoi, sizeof(msg_envoi));
 
     // Réception d'un message
-    uint8_t move_id = 5;
     pogobot_infrared_update();
-    uint32_t end_waiting_time = 0; // le temps mis pour envoyer et recevoir une détection du mur
 
     while(pogobot_infrared_message_available() >= 1){
         message_t msg;
@@ -145,41 +163,41 @@ void user_step(void) {
 
         // si mur détecté
         if(msg.header._packet_type == ir_t_user){
-            move_id = msg.header._receiver_ir_index;
-            //end_waiting_time += pogobot_stopwatch_get_elapsed_microseconds(&mydata->waiting_time);
-            end_waiting_time += pogobot_stopwatch_get_elapsed_microseconds(&mydata->waiting_time);
-        } else { // c'est un robot et qu'il se trouve devant nous
+
+            // on garde en mémoire le moment où on a détecté un mur pour la première fois
+            if(mydata->wall_detected == 0){
+                mydata->wall_detected = 1;
+                mydata->time_before_wall = current_time_milliseconds();
+            }
+
+            // si temps fini, on s'arête
+            if(current_time_milliseconds()-mydata->time_before_wall >= 5000){
+                pogobot_led_setColor(255, 0, 0);
+                move_stop();
+            } else {
+                pogobot_led_setColor(0, 255, 0);
+                if(msg.header._receiver_ir_index == 2){ // si c'est notre capteur arrière qui détecte la présence du mur, on recule progressivement
+                    move_back();
+                } else { // sinon on tourne de sorte à mettre notre capteur arrière face au mur
+                    if(msg.header._receiver_ir_index == 3){
+                        move_right();
+                    } else {
+                        move_left();
+                    }
+                }
+            }
+
+        } else { // si c'est un robot et qu'il se trouve devant nous
             if(msg.header._receiver_ir_index == 0 && msg.header._sender_ir_index == 2){
-                move_id = 1; // on change de direction pour ne plus être derrière lui
+                move_right(); // on change de direction pour ne plus être derrière lui
             }
         }
     }
 
-    // si aucune détection de mur
-    if(end_waiting_time == 0){
-        end_waiting_time = 1000;
+    // si on ne détecte rien, on avance tout droit
+    if(mydata->wall_detected == 0){
+        move_front();
     }
-
-    printf("Temps mis pour détecter le mur : %d micro secondes\n", end_waiting_time);
-
-    // Mouvement
-
-    // si on a reçu la détection du mur rapidement (temps à revoir selon les tests)
-    // alors on s'arrête devant le mur
-    if(end_waiting_time <= 200) { // en microseconds
-        move_stop();
-        pogobot_led_setColor(255, 0, 0);
-    } else {
-        pogobot_led_setColor(0, 255, 0);
-        if (move_id == 1 || move_id == 2) { // au cas où le mur est derrière on commence à tourner
-            move_right();
-        } else if (move_id == 3) {
-            move_left();
-        } else { // si on a reçu le message d'en face on avance, et idem si on n'a reçu aucun message
-            move_front();
-        }
-    }
-
 }
 
 
