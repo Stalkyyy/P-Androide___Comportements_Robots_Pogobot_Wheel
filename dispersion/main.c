@@ -4,7 +4,7 @@
 
 // Définitions de constantes pour les calculs d'angle et les comportements
 #ifndef M_PI_4
-#define M_PI_4 0.7853981633974483f
+#define M_PI_4 0.7853981633974483
 #endif
 
 #define HAS_WHEEL true // Indique si le robot utilise des roues
@@ -105,24 +105,37 @@ void update_direction_count(void) {
     // Réinitialise les compteurs et les distances
     for (int i = 0; i < 4; i++) {
         mydata->direction_counts[i] = 0;
-        mydata->direction_distances[i] = DISTANCE_FAR; // Par défaut, aucune détection
+        mydata->direction_distances[i] = DISTANCE_FAR; // Valeur par défaut
     }
 
-    // Parcourt les messages infrarouges reçus
+    // Lecture des capteurs de lumière pour estimer les distances
+    int16_t light_frontL = pogobot_photosensors_read(1); // capteur avant gauche
+    int16_t light_frontR = pogobot_photosensors_read(2); // capteur avant droit
+    int16_t light_back = pogobot_photosensors_read(0);   // capteur arrière
+
+    int distance_front = 300 - ((light_frontL + light_frontR) / 2); // plus sombre = plus proche
+    int distance_back = 300 - light_back;
+
+    // Mise à jour avec les messages IR
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t mess;
         pogobot_infrared_recover_next_message(&mess);
 
-        int dir = mess.header._receiver_ir_index; // Direction du capteur ayant reçu le message
-        int distance = rand() % (DISTANCE_FAR + 1); // Simule une distance entre 0 et DISTANCE_FAR
+        int dir = mess.header._receiver_ir_index;
+
+        // Estime la distance selon la direction
+        int distance = DISTANCE_FAR;
+        if (dir == 0) distance = distance_front;
+        else if (dir == 2) distance = distance_back;
 
         if (dir >= 0 && dir < 4) {
             mydata->direction_counts[dir]++;
-            mydata->direction_distances[dir] = distance; // Stocke la distance simulée
+            mydata->direction_distances[dir] = distance;
         }
     }
 }
+
 
 // Fonction principale pour gérer la dispersion
 void perform_dispersion_movement(void) {
@@ -136,21 +149,40 @@ void perform_dispersion_movement(void) {
     }
 
     if (total_presence >= 5) {
-        // Fuite d'urgence : éviter de rester coincé dans un groupe
-        int choice = rand() % 2;
-        if (choice == 0) {
-            pogobot_motor_set(motorL, motorThreeQuarter);
-            pogobot_motor_set(motorR, motorQuarter);
+        // Fuite urgente avec mouvement avant + rotation
+        if (mydata->random_movement_ticks == 0) {
+            mydata->random_movement_ticks = 50 + rand() % 100; // persistance
+            int choice = rand() % 2;
+            if (choice == 0) {
+                pogobot_motor_set(motorL, motorThreeQuarter);
+                pogobot_motor_set(motorR, motorHalf);
+            } else {
+                pogobot_motor_set(motorL, motorHalf);
+                pogobot_motor_set(motorR, motorThreeQuarter);
+            }
         } else {
-            pogobot_motor_set(motorL, motorQuarter);
-            pogobot_motor_set(motorR, motorThreeQuarter);
+            mydata->random_movement_ticks--;
         }
-        pogobot_led_setColor(255, 0, 255);  // LED magenta : fuite densité
+    
+        pogobot_led_setColor(255, 0, 255);  // magenta = dispersion urgente
         return;
     }
+    
 
     // Calcul des forces de dispersion en fonction des distances
     int vx = 0, vy = 0;
+    if ((vx == 0 && vy == 0) && total_presence > 0) {
+    int choice = rand() % 2;
+    if (choice == 0) {
+        pogobot_motor_set(motorL, motorThreeQuarter);
+        pogobot_motor_set(motorR, motorQuarter);
+    } else {
+        pogobot_motor_set(motorL, motorQuarter);
+        pogobot_motor_set(motorR, motorThreeQuarter);
+    }
+    pogobot_led_setColor(255, 100, 0); // orange vif = arc de fuite
+    return;
+}
     for (int i = 0; i < 4; i++) {
         int f = 0;
         if (dir_distances[i] < DISTANCE_CLOSE) f = 30;
@@ -192,19 +224,22 @@ void perform_dispersion_movement(void) {
     // Applique les forces inversées pour se disperser
     vx = -vx;
     vy = -vy;
-    float angle = atan2f((float)vy, (float)vx);
-
-    // Détermine la direction en fonction de l'angle
-    if (angle > -M_PI_4 && angle <= M_PI_4) {
-        move_right();
-    } else if (angle > M_PI_4 && angle <= 3 * M_PI_4) {
-        move_front();
-    } else if (angle < -M_PI_4 && angle >= -3 * M_PI_4) {
-        move_stop();
+    if (abs(vx) > abs(vy)) {
+        if (vx > 0) {
+            move_left();  // pression à droite → tourner à gauche
+        } else {
+            move_right(); // pression à gauche → tourner à droite
+        }
     } else {
-        move_left();
+        if (vy > 0) {
+            move_stop();  // pression devant → s'arrêter (ou reculer si nécessaire)
+        } else {
+            move_front(); // pression derrière → avancer
+        }
     }
-    pogobot_led_setColor(255, 128, 0); // LED orange : dispersion
+    
+    // LED orange pour signaler la dispersion active
+    pogobot_led_setColor(255, 128, 0);
 }
 
 // Fonction pour envoyer un ping aux autres robots
@@ -240,7 +275,7 @@ void user_init(void) {
     mydata->last_detect = current_time_milliseconds();
     mydata->last_movement = current_time_milliseconds();
     mydata->last_position = 0;
-    mydata->random_movement_ticks = DISPERSION_INERTIE_TICKS / 2;
+    mydata->random_movement_ticks = 0;
 }
 
 // Fonction appelée à chaque étape
