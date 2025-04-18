@@ -6,7 +6,7 @@
 
 #define MAX_ROBOTS 10
 
-#define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
+#define HAS_WHEEL false // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
 // NB : on tourne obligatoirement à droite quand les sens des robots sont opposés
 // [senseur récepteur][senseur émetteur]
@@ -35,8 +35,8 @@ typedef struct {
     uint16_t motorRight;
     uint8_t dirRight;
 
-    float angle_z;
-    time_reference_t timer_gyro;
+    //float angle_z;
+    //time_reference_t timer_gyro;
 
 } USERDATA;
 
@@ -70,7 +70,7 @@ void move_left(void) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
-        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
+        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
         pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
         pogobot_motor_set(motorL, motorStop);
@@ -84,7 +84,7 @@ void move_right(void) {
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
@@ -142,8 +142,8 @@ void user_init(void) {
         mydata->motorRight = motorHalf;
     }
 
-    mydata->angle_z = 0.0f;
-    pogobot_stopwatch_reset(&mydata->timer_gyro);
+    //mydata->angle_z = 0.0f;
+    //pogobot_stopwatch_reset(&mydata->timer_gyro);
 }
 
 
@@ -151,7 +151,7 @@ void user_init(void) {
 void user_step(void) {
 
     // récupération gyroscope
-    float acc[3];
+    /*float acc[3];
     float gyro[3];
     pogobot_imu_read(acc, gyro);
 
@@ -159,16 +159,16 @@ void user_step(void) {
     float dist = pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_gyro) / 1e6f;
     pogobot_stopwatch_reset(&mydata->timer_gyro); 
 
-    mydata->angle_z += gyro[2] * dist;
+    mydata->angle_z += gyro[2] * dist;*/
 
 
     // Transmission d'un message
     uint8_t msg_envoi[MAX_ROBOTS+3];
     msg_envoi[0] = mydata->last_move;
     msg_envoi[1] = mydata->nb_robots_suivis;
-    msg_envoi[2] = mydata->angle_z;
+    //msg_envoi[2] = mydata->angle_z;
     for(int i=0; i<MAX_ROBOTS; i++){
-        msg_envoi[i+3] = mydata->id_robots_suivis[i];
+        msg_envoi[i+2] = mydata->id_robots_suivis[i];
     }
     
     pogobot_infrared_sendLongMessage_omniSpe(msg_envoi, sizeof(msg_envoi));
@@ -181,7 +181,7 @@ void user_step(void) {
     uint8_t id_robots_dir[4][MAX_ROBOTS] = {0}; // stockage des ids des robots détectés en fct des directions
 
     uint8_t last_moves[4] = {0}; // on garde le dernier mouvement effectué par les formations
-    //uint8_t senseur_emetteur[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
+    uint8_t senseur_emetteur[4] = {0}; // on garde les senseurs d'où les messages ont été envoyés pour détecter si le robot et la formation sont dans le même sens
     
     while(pogobot_infrared_message_available()>=1){
         message_t msg;
@@ -192,7 +192,7 @@ void user_step(void) {
             uint8_t skip = 0;
             // si c'est l'un des robots qui nous suit déjà alors on l'ignore
             for(int i=0; i<msg.payload[1]; i++){ 
-                if(msg.payload[i+3] == pogobot_helper_getid()){
+                if(msg.payload[i+2] == pogobot_helper_getid()){
                     skip = 1;
                     break;
                 }
@@ -201,7 +201,7 @@ void user_step(void) {
                 continue;
             }
 
-            // on évite les doublond d'ids à suivre
+            // on évite les doublons d'ids à suivre
             uint8_t dejaDedans = 0;
             for(int i=0; i<cpt_dir[msg.header._receiver_ir_index]; i++){
                 if(id_robots_dir[msg.header._receiver_ir_index][i] == msg.header._sender_id){
@@ -221,9 +221,9 @@ void user_step(void) {
                 last_moves[msg.header._receiver_ir_index] = msg.payload[0];
 
                 // on stocke par quel senseur le message a été envoyé
-                //senseur_emetteur[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
+                senseur_emetteur[msg.header._receiver_ir_index] =  msg.header._sender_ir_index;
 
-                float angle_autre = *((float *)&msg.payload[2]);  // récupérer le float à partir des bytes
+                /*float angle_autre = *((float *)&msg.payload[2]);  // récupérer le float à partir des bytes
                 float erreur = angle_autre - mydata->angle_z;
                 if (fabsf(erreur) > 0.2f) { // seuil en radians
                     if (erreur > 0) {
@@ -233,7 +233,7 @@ void user_step(void) {
                     }
                 } else {
                     move_id = 0;
-                }
+                }*/
             }
         } 
         // si on détecte autre / un mur (à implémenter selon ce que va donner wall_allignment)
@@ -245,15 +245,16 @@ void user_step(void) {
 
     
     // on regarde si le robot a vu des voisins qu'il peut suivre
-    uint8_t pas_vu = 0;
+    uint8_t vu = 0;
     for(int i=0; i<4; i++){
         if(cpt_dir[i] > 0){
-            pas_vu = 1;
+            vu = 1;
+            break;
         }
     }
 
     // s'il a trouvé qlq à suivre, il s'adapte à la direction majoritaire
-    if(pas_vu == 1){
+    if(vu == 1){
 
         // on cherche la direction où y a le plus de robots
         uint8_t nb_robots_max = 0;
@@ -277,8 +278,12 @@ void user_step(void) {
         if(nb_robots_max == 1){
             uint8_t max_id = pogobot_helper_getid();
             uint8_t max_dir = 0;
+            // s'il en détecte plusieurs seuls, il suit celui ayant l'id le plus grand
             for(int i=0; i<cpt_egalite; i++){
                 uint8_t id_voisin = id_robots_dir[dir_egal[i]][0];
+                if(cpt_egalite > 1){
+                    printf("voisin : %d\n", id_voisin);
+                }
                 if(max_id < id_voisin){
                     max_id = id_voisin;
                     max_dir = dir_egal[i];
@@ -288,7 +293,7 @@ void user_step(void) {
                 pogobot_led_setColor(0, 255, 0); 
                 memset(mydata->id_robots_suivis, 0, MAX_ROBOTS * sizeof(uint8_t));
                 mydata->nb_robots_suivis = 0;
-            } else {                
+            } else {    
                 // Option 1 : si mvts inverses 
                 /*if(senseur_emetteur[max_dir] == max_dir){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
                     move_id = 1;
@@ -297,32 +302,34 @@ void user_step(void) {
                 }*/
 
                 // Option 2 : avec le tableau de sens
-                /*move_id = sens_robot[max_dir][senseur_emetteur[max_dir]];
+                move_id = sens_robot[max_dir][senseur_emetteur[max_dir]];
                 if(move_id == 0){
                     move_id = last_moves[max_dir]; 
-                }*/
+                }
 
                 // Option 3 : toujours dans le même sens (on peut faire que ça avec la simulation)
                 //move_id = last_moves[max_dir];
 
                 // Option 4 : gyroscope
-                if(move_id == 0){
+                /*if(move_id == 0){
                     move_id = last_moves[max_dir];
-                }
+                }*/
 
                 // on récupère les ids des voisins qu'on suit 
                 memcpy(mydata->id_robots_suivis, id_robots_dir[max_dir], MAX_ROBOTS * sizeof(uint8_t));
                 mydata->nb_robots_suivis = nb_robots_max;
                 pogobot_led_setColor(255, 0, 0);
 
-                printf("Suivi des robots : ");
-                for(int i = 0; i < nb_robots_max; i++) {
-                    printf("%d ", mydata->id_robots_suivis[i]);
+                if(cpt_egalite > 1){
+                    printf("Suivi des robots : ");
+                    for(int i = 0; i < nb_robots_max; i++) {
+                        printf("%d ", mydata->id_robots_suivis[i]);
+                    }
+                    printf("\n");
                 }
-                printf("\n");
             }
     
-        } else { // s'il détecte un ou plusieurs groupes
+        }/* else { // s'il détecte un ou plusieurs groupes
             uint8_t idx_robots_dir = 0;
             // si y a égalité, on prend l'une des directions exécutées au hasard
             if(cpt_egalite > 1){
@@ -345,12 +352,12 @@ void user_step(void) {
                 //move_id = last_moves[dir_egal[idx]];
 
                 // Option 4 : gyroscope
-                if(move_id == 0){
+                /*if(move_id == 0){
                     move_id = last_moves[dir_egal[idx]];
-                }
+                }*/
 
-                idx_robots_dir = dir_egal[idx];
-            } else {
+                /*idx_robots_dir = dir_egal[idx];
+            } else {*/
 
                 // Option 1 : si mvts inverses
                 /*if(senseur_emetteur[dir_egal[0]] == dir_egal[0]){ // si le message a été envoyé et reçu du même côté alors sens inverse donc on tourne
@@ -369,11 +376,11 @@ void user_step(void) {
                 //move_id = last_moves[dir_egal[0]];
 
                 // Option 4 : gyroscope
-                if(move_id == 0){
+                /*if(move_id == 0){
                     move_id = last_moves[dir_egal[0]];
-                }
+                }*/
 
-                idx_robots_dir = dir_egal[0];
+                /*idx_robots_dir = dir_egal[0];
             }
 
             // on récupère les ids des voisins qu'on suit 
@@ -386,7 +393,7 @@ void user_step(void) {
                 printf("%d ", mydata->id_robots_suivis[i]);
             }
             printf("\n");
-        }
+        } */
 
     } else { // s'il n'a vu personne d'intérêt, il continue sa vie
         pogobot_led_setColor(0, 255, 0); 
