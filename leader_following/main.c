@@ -4,12 +4,14 @@
 
 #define HAS_WHEEL false
 
-#define NB_MAX_ROBOTS 3
+#define NB_MAX_ROBOTS 2
 
 #define ID_EXTREMITY 1
 #define ID_LEADER 2
 
 #define WALK_IN_DIRECTION_TIME 3000000 // (en microsec) durée de déplacement dans une direction donnée (pendant 3 sec max)
+//#define SAFE_DISTANCE  JE SAIS PAS QUOI METTRE POUR L'INSTANT mais une distance de sécurité entre les robots pour éviter les collsiions ou qu'ils soient trop près
+#define STOP 0 // si le leader s'arr^te, doit avertir les autres aussi
 
 // Prototypes des fonctions
 void detect_neighbours(void);
@@ -56,7 +58,10 @@ typedef struct {
 
     uint16_t nb_robots;
     uint16_t all_known_ids[NB_MAX_ROBOTS]; // tous les id (des autres robots et de lui-même) que le robot connait (taille 20 car max 20 robots selon le sujet)
-    int start;
+    int start_election;
+    int start_fix_orientation;
+    int fix_orientation_step;
+    //int aligned;
 
     uint16_t motorLeft;
     uint16_t motorRight;
@@ -73,7 +78,7 @@ void user_init(void) {
 #endif
 
     pogobot_stopwatch_reset(&mydata->timer_it);
-    main_loop_hz = 60;
+    main_loop_hz = 45; // mettre 45 ???
     max_nb_processed_msg_per_tick = 0;
     msg_rx_fn = NULL;
     msg_tx_fn = NULL;
@@ -81,22 +86,31 @@ void user_init(void) {
     pogobot_infrared_set_power(3);
 
     // Récupération des données de calibration des robots
-    // uint16_t power_mem[3];
-    // uint8_t dir_mem[3];
-    // pogobot_motor_power_mem_get(power_mem);
-    // mydata->motorLeft = power_mem[1];
-    // mydata->motorRight = power_mem[0];
-    // pogobot_motor_dir_mem_get(dir_mem);
-    // mydata->dirLeft = dir_mem[1];
-    // mydata->dirRight = dir_mem[0];
+    uint16_t power_mem[3];
+    uint8_t dir_mem[3];
+    if(HAS_WHEEL){
+        pogobot_motor_power_mem_get(power_mem);
+        mydata->motorLeft = power_mem[1];
+        mydata->motorRight = power_mem[0];
+
+        pogobot_motor_dir_mem_get(dir_mem);
+        mydata->dirLeft = dir_mem[1];
+        mydata->dirRight = dir_mem[0];
+    } else{
+        mydata->motorLeft = motorHalf;
+        mydata->motorRight = motorHalf;
+    }
 
     mydata->my_id = pogobot_helper_getid();
     mydata->is_leader = 0;
     mydata->has_leader = 0;
-    mydata->predecessor_id = -1;
+    mydata->predecessor_id = UINT16_MAX; // de base c'était à -1, donc remettre à -1 si pbm
     mydata->nb_neighbours = 0;
     mydata->nb_robots = 1;
-    mydata->start = 0;
+    mydata->start_election = 0;
+    mydata->start_fix_orientation = 0;
+    mydata->fix_orientation_step = 0;
+    //mydata->aligned = 0;
 
     for (uint8_t i = 0; i < 2; i++){
         mydata->neighbours_ids[i] = UINT16_MAX;
@@ -134,6 +148,53 @@ void send_id(uint16_t id){
     pogobot_infrared_sendLongMessage_omniSpe(msg, sizeof(msg));
 }
 
+void move_front(void) {
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, mydata->dirRight);
+    } else {
+        pogobot_motor_set(motorL, mydata->motorLeft);
+        pogobot_motor_set(motorR, mydata->motorRight);
+    }
+}
+
+void move_left(void) {
+    //mydata->lastTurn = LEFT_TURN;
+
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, ((mydata->dirLeft + 1) % 2));
+        pogobot_motor_dir_set(motorR, mydata->dirRight);
+    } else {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    }
+}
+
+void move_right(void) {
+    //mydata->lastTurn = RIGHT_TURN;
+
+    if (HAS_WHEEL) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+
+        pogobot_motor_dir_set(motorL, mydata->dirLeft);
+        pogobot_motor_dir_set(motorR, ((mydata->dirRight + 1) % 2));
+    } else {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    }
+}
+
+void move_stop(void) {
+    pogobot_motor_set(motorL, motorStop);
+    pogobot_motor_set(motorR, motorStop);
+}
 
 void detect_neighbours(void) {
     send_id(mydata->my_id);
@@ -153,7 +214,7 @@ void detect_neighbours(void) {
             // add_id_received(sender_id);
             mydata->nb_neighbours++;
             // printf("Robot %d a trouvé voisin %d!\n", mydata->my_id, sender_id);
-            printf("Robot %d a trouvé voisin %d!\n", mydata->my_id, msg.payload[0]);
+            //printf("Robot %d a trouvé voisin %d!\n", mydata->my_id, msg.payload[0]);
         }
         send_id(mydata->my_id); //renvoit son id au cas où non reçu
     }
@@ -219,14 +280,14 @@ void election_leader(void) {
                 else if (mydata->my_id > id){
                     mydata->predecessor_id = msg.header._sender_id;
                     pogobot_led_setColor(0, 0, 255); // bleu pour follower
-                    printf("PAS LEADER car: %d VS %d", mydata->my_id, id);
-                    printf("Robot %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
+                    //printf("PAS LEADER car: %d VS %d", mydata->my_id, id);
+                    //printf("Robot %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
                     mydata->has_leader = 1;
                 }
                 else if (mydata->my_id < id) {
                     mydata->is_leader = 1;
                     pogobot_led_setColor(0, 255, 0); // vert pour le leader
-                    printf("LEADER car myid %d < autre id %d donc envoi message leader %d\n", mydata->my_id, id, mydata->my_id);
+                    //printf("LEADER car myid %d < autre id %d donc envoi message leader %d\n", mydata->my_id, id, mydata->my_id);
                     transmission_msg(ID_LEADER, mydata->my_id);
                     mydata->has_leader = 1;
                 }
@@ -252,7 +313,7 @@ void set_line_order(void) {
             if (mydata->has_leader == 0) {
                 //if (id_already_received(msg.header._sender_id, mydata->neighbours_ids, 2)==1 ){ // if peut-être pas nécessaire mais on sait jamais...
                 mydata->predecessor_id = msg.header._sender_id;
-                printf("SET LEADER : %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
+                //printf("SET LEADER : %d a pour prédecesseur : %d\n", mydata->my_id, mydata->predecessor_id);
                 pogobot_led_setColor(0, 0, 255); // bleu pour le follower
                 transmission_msg(ID_LEADER, received_msg.msg_values.id);
                 mydata->has_leader = 1;
@@ -262,6 +323,54 @@ void set_line_order(void) {
             }
         }
     }
+}
+
+void fix_orientation(void){
+    //int aligned = 0;
+    send_id(mydata->my_id);
+    pogobot_infrared_update();
+    // printf("DANS FIX ORIENTATION AVANT WHILE %d\n", aligned);
+    // printf("message reçu ? %d\n", pogobot_infrared_message_available());
+    while (pogobot_infrared_message_available() && mydata->fix_orientation_step == 1) {
+        message_t msg;
+        pogobot_infrared_recover_next_message(&msg);
+
+        int direction = msg.header._receiver_ir_index;
+
+        if(mydata->is_leader == 1){
+            printf("FIX ORIENTATION leader direction %d\n", direction);
+            if (direction == 2){ // si reçu par derrière, rien à faire, déjà bien aligné
+                printf("Leader ALIGNED\n");
+                move_stop();
+                mydata->fix_orientation_step = 2; // mais doit continuer à envoyer des msg pour l'alignement des autres robits
+                //mydata->aligned = 1;
+                //break; // pbm de boucle while (on sort jamais de la 2ème boucle while, donc on check jamais si aligned==0 ou pas)
+                return; // nécessaire ?? ou aligned pas nécessaire??
+            }
+            else if (direction == 1 || direction == 3 || direction == 0){ // si détecté par lla droite, la gauche ou l'avant, tourne sur lui-même vers la droite
+                move_right();
+            } 
+        }
+        //printf("DANS WHILE DE FIX ORIENTATION\n");
+        else if(mydata->is_leader == 0 && msg.payload[0] == mydata->predecessor_id){
+            if (mydata->is_leader == 0){
+                printf("FIX ORIENTATION follower direction %d\n", direction);
+                if (direction == 0){ // si reçu de devant, rien à faire, déjà bien aligné
+                    printf("Follower ALIGNED\n");
+                    move_stop();
+                    mydata->fix_orientation_step = 2; // mais doit continuer à envoyer des msg pour l'alignement des autres robits
+                    //mydata->aligned = 1;
+                    //break; // pbm de boucle while (on sort jamais de la 2ème boucle while, donc on check jamais si aligned==0 ou pas)
+                    return; // nécessaire ?? ou aligned pas nécessaire??
+                }
+                else if (direction == 1 || direction == 3 || direction == 2){ // si détecté par la droite, la gauche ou l'arrière, tourne sur lui-même vers la droite
+                    move_right();
+                }
+            }
+        }
+        send_id(mydata->my_id);
+    }
+    
 }
 
 void send_position(uint16_t id, uint16_t ml, uint16_t mr) {
@@ -275,21 +384,31 @@ void random_walk_leader(void) {
     int directions[] = { 0, 1, 3, 4 };
     int random_index = rand() % 4;
     int random_direction = directions[random_index];
-
-    uint16_t motorLeft = motorHalf;
-    uint16_t motorRight = motorHalf;
-
-    switch (random_direction) {
-        case 0: motorLeft += motorHalf; motorRight += motorHalf; break; // pour aller vers l'avant
-        case 1: motorLeft += motorHalf; motorRight -= motorStop; break; // pour aller à droite
-        case 3: motorLeft -= motorStop; motorRight += motorHalf; break; // pour aller à gauche
-        case 4: motorLeft = motorStop; motorRight = motorStop; break; // pour s'arrêter
+    // printf("DIRECTION %d\n", random_direction);
+    if(random_direction == 0){ // tout droit
+        move_front();
+    } else if (random_direction == 1){ // vers la droite
+        move_right();
+    } else if(random_direction == 2){ // vers la gauche
+        move_left();
+    } else { // random_direction == 4 -> ARRÊT
+        move_stop();
     }
 
-    pogobot_motor_set(motorL, motorLeft);
-    pogobot_motor_set(motorR, motorRight);
-
-    send_position(mydata->my_id, motorLeft, motorRight);
+    if(random_direction == 0 || random_direction == 4){
+        time_reference_t timer;
+        // pogobot_timer_init(&timer, WALK_IN_DIRECTION_TIME);
+        pogobot_stopwatch_reset(&timer);
+        // while (!pogobot_timer_has_expired(&timer)){
+        while(pogobot_stopwatch_get_elapsed_microseconds(&timer) < WALK_IN_DIRECTION_TIME){
+            // printf("TIMER NON FINI %d", pogobot_timer_get_remaining_microseconds(&timer));
+            //printf("TIMER NON FINI %d\n", pogobot_stopwatch_get_elapsed_microseconds(&timer));
+            send_position(mydata->my_id, mydata->motorLeft, mydata->motorRight);
+        }
+    }
+    else{
+        send_position(mydata->my_id, mydata->motorLeft, mydata->motorRight);
+    }
 }
 
 void follow_leader(void) {
@@ -306,20 +425,26 @@ void follow_leader(void) {
 
         if (received_msg->id == mydata->predecessor_id) {
             if (direction == 0){ //si predecesseur devant est détecté par en face
-
-                pogobot_motor_set(motorL, motorHalf);
-                pogobot_motor_set(motorR, motorHalf);
+                move_front();
+                // pogobot_motor_set(motorL, motorHalf);
+                // pogobot_motor_set(motorR, motorHalf);
                 // pogobot_motor_set(motorL, received_msg->motorL);
                 // pogobot_motor_set(motorR, received_msg->motorR);
             }
             else if(direction == 1){ // si prédecesseur détecté à droite
-                pogobot_motor_set(motorL, motorHalf);
-                pogobot_motor_set(motorR, motorQuarter);
+                move_right();
+                // pogobot_motor_set(motorL, motorHalf);
+                // pogobot_motor_set(motorR, motorQuarter);
             }
-            else if(direction == 3){
-                pogobot_motor_set(motorL, motorQuarter);
-                pogobot_motor_set(motorR, motorHalf);
+            else if(direction == 3){ // si prédecesseur détecté à gauche
+                move_left();
+                // pogobot_motor_set(motorL, motorQuarter);
+                // pogobot_motor_set(motorR, motorHalf);
             }
+
+            // AJOUTER CONDITION SI ROBOT DE DEVANT S'ARRETE!!!!!!
+            // distance de sécurité? ou envoi de msg pour avertir cela?
+
             // pogobot_motor_set(motorL, received_msg->motorL);
             // pogobot_motor_set(motorR, received_msg->motorR);
             send_position(mydata->my_id, received_msg->motorL, received_msg->motorR);
@@ -330,11 +455,9 @@ void follow_leader(void) {
 void user_step(void) {
     if (mydata->has_leader == 0){ // en attendant la formation complète de la file indienne
         if (mydata->nb_robots < NB_MAX_ROBOTS){
-            //printf("DANS LE IF %d\n", mydata->nb_robots);
-            send_id(mydata->my_id); // nécessaire d'envoyer plusieurs fois???
+            send_id(mydata->my_id);
             pogobot_infrared_update();
             while (pogobot_infrared_message_available() && mydata->nb_robots < NB_MAX_ROBOTS) {
-                //printf("DANS LE WHILE %d\n", mydata->nb_robots);
                 message_t msg;
                 pogobot_infrared_recover_next_message(&msg);
                 if (msg.payload[0] != mydata->my_id && id_already_received(msg.payload[0], mydata->all_known_ids, NB_MAX_ROBOTS)==0){
@@ -342,45 +465,96 @@ void user_step(void) {
                     send_id(msg.payload[0]);
                     send_id(mydata->my_id);// renvoit son id au cas où nouveau robot ajouté à la file
                     mydata->nb_robots++;
-                    printf("Robot %d a trouvé robot %d -> nb robots = %d!\n", mydata->my_id, msg.payload[0], mydata->nb_robots);
+                    //printf("Robot %d a trouvé robot %d -> nb robots = %d!\n", mydata->my_id, msg.payload[0], mydata->nb_robots);
                 }
                 else{
                     send_id(msg.payload[0]); // envoit quand même le message pour les autres robots qui ne l'ont pas encore reçu
                     send_id(mydata->my_id); // renvoit son id au cas où nouveau robot ajouté à la file
-                    //printf("TRANSMISSION QUAND MEME\n");
-                }
-                
+                }                
             }
             pogobot_infrared_clear_message_queue();
             pogobot_infrared_update();
-            // msleep(5000000); //attend 5 sec
-            mydata->start = 1;
         }
 
-        // else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start == 0){
-        //     //int count = 0;
-        //     time_reference_t t;
-        //     pogobot_stopwatch_reset(&t);
-        //     pogobot_infrared_update();
-        //     while (pogobot_infrared_message_available() && pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 10 sec
-        //         message_t msg;
-        //         pogobot_infrared_recover_next_message(&msg);
-        //         printf("ELSE IF Temps intervalle %d", pogobot_stopwatch_get_elapsed_microseconds(&t));
-        //         send_id(msg.payload[0]);
-        //         send_id(mydata->my_id);
-        //     }
-        //     pogobot_infrared_clear_message_queue();
-        //     pogobot_infrared_update();
-        //     mydata->start = 1;
-        // }
+        else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 0){
+            time_reference_t t;
+            pogobot_stopwatch_reset(&t);
+            pogobot_infrared_update();
+            while (pogobot_infrared_message_available() && pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 5 sec
+                message_t msg;
+                pogobot_infrared_recover_next_message(&msg);
+                //printf("ELSE IF Temps intervalle %d", pogobot_stopwatch_get_elapsed_microseconds(&t));
+                send_id(msg.payload[0]);
+                send_id(mydata->my_id);
+            }
+            pogobot_infrared_clear_message_queue();
+            pogobot_infrared_update();
+            mydata->start_election = 1;
+        }
 
-        else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start == 1){
+        else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 1){
             if (mydata->nb_neighbours == 0){
                 detect_neighbours();
             }
             send_id_extremity();
             election_leader();
             set_line_order();
+            if(mydata->nb_neighbours > 0){
+                if(mydata->is_leader == 1 || (mydata->is_leader == 0 && mydata->predecessor_id != UINT16_MAX)){
+                    mydata->start_fix_orientation = 1;
+                    pogobot_infrared_clear_message_queue(); // supprime les éventuels msg reçu précédemment
+                    pogobot_infrared_update();
+                }
+            }
+        }
+    }
+
+    else if (mydata->has_leader == 1 && mydata->start_fix_orientation == 1){
+        printf("DANS LE ELSE\n");
+        time_reference_t t;
+        if(mydata->fix_orientation_step == 0){
+            pogobot_stopwatch_reset(&t);
+            mydata->fix_orientation_step = 1;
+            // pogobot_timer_init(&t, 5000000);
+            // pogobot_timer_wait_for_expiry(&t);
+            // if (pogobot_stopwatch_get_elapsed_microseconds(&t) > 5000000){
+            //     mydata->fix_orientation_step = 1;
+            // }
+            printf("FIN STEP 0 ? -> %d\n", mydata->fix_orientation_step);
+        }
+
+        // time_reference_t t;
+        // pogobot_stopwatch_reset(&t);
+        // // pogobot_infrared_clear_message_queue(); // supprime les éventuels msg reçu précédemment
+        // // pogobot_infrared_update();
+        // // ENVOI DE MSG en attendant que tous les robots aient obtenu leur rôle ou faire un msleep !!!!
+        // while (pogobot_stopwatch_get_elapsed_microseconds(&t) < 5000000) { // renvoi de msg pendant 10 sec
+        //     printf("Dans la boucle de temps !!!\n");
+        //     //send_id(mydata->my_id);
+        // }
+        // // msleep(5000000);
+
+        else if(mydata->fix_orientation_step == 1){
+            if(pogobot_stopwatch_get_elapsed_microseconds(&t) > 5000000){
+                fix_orientation();
+            }
+            //fix_orientation();
+            // if(mydata->aligned == 1){
+            //     mydata->fix_orientation_step = 2;
+            // }
+            printf("FIN STEP 1 ? -> %d\n", mydata->fix_orientation_step);
+        }
+
+        else if(mydata->fix_orientation_step == 2){
+            //time_reference_t t;
+            printf("DANS AUTRE ELSE IF\n");
+            // l'alignement de ce robot est terminé, mais doit envoyer des msg pour celui des autres robots
+            pogobot_stopwatch_reset(&t);
+            while (pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 10 sec
+                send_id(mydata->my_id);
+            }
+            mydata->start_fix_orientation = 0;
+            printf("FIN STEP 2 ? -> %d\n", mydata->fix_orientation_step);
         }
     }
 
