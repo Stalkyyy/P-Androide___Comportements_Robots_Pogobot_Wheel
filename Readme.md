@@ -69,3 +69,10 @@ Pour compiler l'un des comportements des robots, rendez-vous dans son répertoir
     make clean bin  # Pour compiler le binaire pour les vrais pogobots.
     # ou bien...
     make clean all  # Pour compiler la simulation et le binaire des pogobots.
+
+
+
+Documentation
+=============
+
+La documentation de l'API se trouve dans le fichier [pogodocs.md](pogodocs.md).
