@@ -20,7 +20,7 @@ L'ISIR vient de terminer la construction de 20 robots Pogobot à roues, des robo
 - **déplacement au hasard** : Chaque robot se déplace en ligne droite lorsqu'il n'y a pas d'obstacle (robot ou mur) et change de direction dans le cas contraire.
 - **suivi de leader** : les robots sont placés dans une arène en file indienne. Un robot suit un comportement de déplacement au hasard, les autres robots suivent leur prédécesseur.
 - **déplacement en formation** : chaque robot se déplace en ligne droite en l'absence de voisin et évite les murs si besoin. En présence d'un voisin, un robot modifie sa direction pour s'aligner sur celle de son (ses) voisin(s).
-- **alignement face au mur** : les robots se rapprochent des murs et d'arrête. L'état final est d'obtenir un rangement en ligne des robots face au mur.
+- **alignement face au mur** : les robots se rapprochent des murs et s'arrêtent. L'état final est d'obtenir un rangement en ligne des robots face au mur.
 - **phototaxie** : les robots se déplacent vers la source lumineuse.
 - **dispersion** : les pogobots s'écartent les uns des autres pour couvrir au mieux l'environnement.
 
