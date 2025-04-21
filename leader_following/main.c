@@ -62,6 +62,7 @@ typedef struct {
     uint16_t nb_robots;
     uint16_t all_known_ids[NB_MAX_ROBOTS]; // tous les id (des autres robots et de lui-même) que le robot connait (taille 20 car max 20 robots selon le sujet)
     int start_election;
+    int start_moving;
 
     uint16_t motorLeft;
     uint16_t motorRight;
@@ -79,7 +80,7 @@ void user_init(void) {
 #endif
 
     pogobot_stopwatch_reset(&mydata->timer_it);
-    main_loop_hz = 45; // mettre 45 ???
+    main_loop_hz = 45; // mettre 45 ??? remettre 60 ???????
     max_nb_processed_msg_per_tick = 0;
     msg_rx_fn = NULL;
     msg_tx_fn = NULL;
@@ -109,6 +110,7 @@ void user_init(void) {
     mydata->nb_neighbours = 0;
     mydata->nb_robots = 1;
     mydata->start_election = 0;
+    mydata->start_moving = 0;
     mydata->lastDir = 0;
 
     for (uint8_t i = 0; i < 2; i++){
@@ -332,7 +334,7 @@ void random_walk_leader(void) {
     int directions[] = { 0, 1, 2, 3 }; // 0: tout droit, 1: droite, 2: gauche, 3: stop
     int random_index = rand() % 4;
     int random_direction = directions[random_index];
-    printf("DIRECTION LEADER %d\n", random_direction);
+    //printf("DIRECTION LEADER %d\n", random_direction);
     if(random_direction == 0){ // tout droit
         mydata->lastDir = random_direction;
         move_front();
@@ -393,13 +395,13 @@ void follow_leader(void) {
             int direction = msg.header._receiver_ir_index;
 
             if (received_msg->id == mydata->predecessor_id) {
-                printf("DIRECTION DU PRED %d\n", received_msg->dir);
+                //printf("DIRECTION DU PRED %d\n", received_msg->dir);
                 if(received_msg->dir == 3){ // si le prédecesseur est arrêté, s'arrête aussi
-                    printf("FOLLOWER STOP\n");
+                    //printf("FOLLOWER STOP\n");
                     move_stop();
                     send_position(POSITION_MSG, mydata->my_id, received_msg->motorL, received_msg->motorR, received_msg->dir);
                 } else {
-                    printf("FOLLOWER WALK\n", direction);
+                    //printf("FOLLOWER WALK\n", direction);
                     if (direction == 0){ //si predecesseur devant est détecté par en face 
                         // AJOUTER PEUT ETRE direction == 2 -> si le sens de la file indienne est inversée selon le leader élu
                         move_front();
@@ -451,14 +453,19 @@ void user_step(void) {
                     send_id(mydata->my_id); // renvoit son id au cas où nouveau robot ajouté à la file
                 }                
             }
-            pogobot_infrared_clear_message_queue();
-            pogobot_infrared_update();
+            // pogobot_infrared_clear_message_queue(); // peut être pas nécessaire de supprimer ces msg
+            // pogobot_infrared_update();
         }
 
         else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 0){
+            //static uint32_t timer = mydata->timer_it;
             time_reference_t t;
             pogobot_stopwatch_reset(&t);
             pogobot_infrared_update();
+            //while(mydata->timer_it - timer < 10000000)
+
+            // OU ALORS n'a pas le temps de recevoir un message du coup false pour la 1ère condition (peut être que dans le cas n=2)
+            //while(pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) et if(pogobot_infrared_message_available())
             while (pogobot_infrared_message_available() && pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 5 sec
                 message_t msg;
                 pogobot_infrared_recover_next_message(&msg);
@@ -481,8 +488,28 @@ void user_step(void) {
         }
     }
 
-    random_walk_leader();
-    follow_leader();
+    // ajout d'un timer de 5sec après les rôles établis (même si ça fait trop de timer...) + condition sur random_walk
+    // else if (mydata->has_leader == 1 && mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 1){
+    //     printf("Dans else if %d\n", mydata->start_moving);
+    //     if(mydata->start_moving == 0){
+    //         printf("dans if \n");
+    //         time_reference_t t;
+    //         pogobot_stopwatch_reset(&t);
+    //         while(pogobot_stopwatch_get_elapsed_microseconds(&t) < 5000000){ //  attente de 5sec
+    //             printf("Bloqué\n");
+    //         }
+    //         mydata->start_moving = 1;
+    //     } else {
+    //         printf("Enfin dans le else pour move \n");
+    //         random_walk_leader();
+    //         follow_leader();
+    //     }
+    // }
+
+    else if (mydata->has_leader == 1 && mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 1){
+        random_walk_leader();
+        follow_leader();
+    }
 }
 
 int main(void) {
