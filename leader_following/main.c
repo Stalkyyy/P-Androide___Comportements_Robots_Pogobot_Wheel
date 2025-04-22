@@ -10,6 +10,7 @@
 #define ID_LEADER 2
 #define POSITION_MSG 3
 
+#define WAIT_BEFORE_ELECTION 10000000
 #define WALK_IN_DIRECTION_TIME 3000000 // (en microsec) durée de déplacement dans une direction donnée (pendant 3 sec max)
 //#define SAFE_DISTANCE  JE SAIS PAS QUOI METTRE POUR L'INSTANT mais une distance de sécurité entre les robots pour éviter les collsiions ou qu'ils soient trop près
 
@@ -61,6 +62,8 @@ typedef struct {
 
     uint16_t nb_robots;
     uint16_t all_known_ids[NB_MAX_ROBOTS]; // tous les id (des autres robots et de lui-même) que le robot connait (taille 20 car max 20 robots selon le sujet)
+    time_reference_t timer;
+    int timer_init; // pour initialiser le timer qu'une seule fois
     int start_election;
     int start_moving;
 
@@ -112,6 +115,7 @@ void user_init(void) {
     mydata->start_election = 0;
     mydata->start_moving = 0;
     mydata->lastDir = 0;
+    mydata->timer_init = 0;
 
     for (uint8_t i = 0; i < 2; i++){
         mydata->neighbours_ids[i] = UINT16_MAX;
@@ -458,24 +462,43 @@ void user_step(void) {
         }
 
         else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 0){
-            //static uint32_t timer = mydata->timer_it;
-            time_reference_t t;
-            pogobot_stopwatch_reset(&t);
-            pogobot_infrared_update();
-            //while(mydata->timer_it - timer < 10000000)
+            // time_reference_t t;
+            // pogobot_stopwatch_reset(&t);
+            if(mydata->timer_init == 0){
+                pogobot_timer_init(&mydata->timer, WAIT_BEFORE_ELECTION);
+                mydata->timer_init = 1;
+            } else {
+                if(!pogobot_timer_has_expired(&mydata->timer_init)) { // si le timer n'a tjr pas expiré
+                    pogobot_infrared_update();
+                    if (pogobot_infrared_message_available()){
+                        message_t msg;
+                        pogobot_infrared_recover_next_message(&msg);
+                        send_id(msg.payload[0]);
+                    }
+                    send_id(mydata->my_id);
+                } else if (pogobot_timer_has_expired(&mydata->timer_init)) { // si le timer a expiré
+                    pogobot_infrared_clear_message_queue();
+                    pogobot_infrared_update();
+                    //mydata->timer_init = 0;
+                    mydata->start_election = 1;
+                }
+            }
 
             // OU ALORS n'a pas le temps de recevoir un message du coup false pour la 1ère condition (peut être que dans le cas n=2)
             //while(pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) et if(pogobot_infrared_message_available())
-            while (pogobot_infrared_message_available() && pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 5 sec
-                message_t msg;
-                pogobot_infrared_recover_next_message(&msg);
-                //printf("ELSE IF Temps intervalle %d", pogobot_stopwatch_get_elapsed_microseconds(&t));
-                send_id(msg.payload[0]);
-                send_id(mydata->my_id);
-            }
-            pogobot_infrared_clear_message_queue();
-            pogobot_infrared_update();
-            mydata->start_election = 1;
+            // while (pogobot_stopwatch_get_elapsed_microseconds(&t) < 10000000) { // renvoi de msg pendant 5 sec
+            //     pogobot_infrared_update();
+            //     if (pogobot_infrared_message_available()){
+            //         message_t msg;
+            //         pogobot_infrared_recover_next_message(&msg);
+            //         //printf("ELSE IF Temps intervalle %d", pogobot_stopwatch_get_elapsed_microseconds(&t));
+            //         send_id(msg.payload[0]);
+            //     }
+            //     send_id(mydata->my_id);
+            // }
+            // pogobot_infrared_clear_message_queue();
+            // pogobot_infrared_update();
+            // mydata->start_election = 1;
         }
 
         else if (mydata->nb_robots == NB_MAX_ROBOTS && mydata->start_election == 1){
@@ -493,12 +516,19 @@ void user_step(void) {
     //     printf("Dans else if %d\n", mydata->start_moving);
     //     if(mydata->start_moving == 0){
     //         printf("dans if \n");
-    //         time_reference_t t;
-    //         pogobot_stopwatch_reset(&t);
-    //         while(pogobot_stopwatch_get_elapsed_microseconds(&t) < 5000000){ //  attente de 5sec
-    //             printf("Bloqué\n");
+    //         //time_reference_t t;
+    //         //pogobot_stopwatch_reset(&t);
+    //         if(mydata->timer_init == 0){
+    //             pogobot_timer_init(&mydata->timer, 5000000);
+    //             mydata->timer_init =1;
+    //         } else{
+    //             pogobot_timer_wait_for_expiry(&mydata->timer);
+    //             mydata->start_moving = 1;
     //         }
-    //         mydata->start_moving = 1;
+    //         // while(pogobot_stopwatch_get_elapsed_microseconds(&t) < 5000000){ //  attente de 5sec
+    //         //     printf("Bloqué\n");
+    //         // }
+    //         // mydata->start_moving = 1;
     //     } else {
     //         printf("Enfin dans le else pour move \n");
     //         random_walk_leader();
