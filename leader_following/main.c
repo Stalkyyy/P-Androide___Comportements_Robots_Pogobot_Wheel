@@ -407,15 +407,15 @@ void follow_leader(void) {
                     send_position(POSITION_MSG, mydata->my_id, received_msg->motorL, received_msg->motorR, received_msg->dir);
                 } else {
                     //printf("FOLLOWER WALK\n", direction);
-                    if (direction == 0){ //si predecesseur devant est détecté par en face 
-                        // AJOUTER PEUT ETRE direction == 2 -> si le sens de la file indienne est inversée selon le leader élu
-                        move_front();
-                        // pogobot_motor_set(motorL, motorHalf);
-                        // pogobot_motor_set(motorR, motorHalf);
-                        // pogobot_motor_set(motorL, received_msg->motorL);
-                        // pogobot_motor_set(motorR, received_msg->motorR);
-                    }
-                    else if(direction == 1){ // si prédecesseur détecté à droite
+                    // if (direction == 0){ //si predecesseur devant est détecté par en face 
+                    //     // AJOUTER PEUT ETRE direction == 2 -> si le sens de la file indienne est inversée selon le leader élu
+                    //     move_front();
+                    //     // pogobot_motor_set(motorL, motorHalf);
+                    //     // pogobot_motor_set(motorR, motorHalf);
+                    //     // pogobot_motor_set(motorL, received_msg->motorL);
+                    //     // pogobot_motor_set(motorR, received_msg->motorR);
+                    // }
+                    if(direction == 1){ // si prédecesseur détecté à droite
                         move_right();
                         // pogobot_motor_set(motorL, motorHalf);
                         // pogobot_motor_set(motorR, motorQuarter);
@@ -424,6 +424,8 @@ void follow_leader(void) {
                         move_left();
                         // pogobot_motor_set(motorL, motorQuarter);
                         // pogobot_motor_set(motorR, motorHalf);
+                    } else if (direction == 0){
+                        move_front();
                     }
 
                     // AJOUTER CONDITION SI ROBOT DE DEVANT S'ARRETE!!!!!!
