@@ -10,7 +10,7 @@
 #define ID_LEADER 2
 #define POSITION_MSG 3
 
-#define WAIT_BEFORE_ELECTION 10000000
+#define WAIT_BEFORE_ELECTION 5000000
 #define WALK_IN_DIRECTION_TIME 3000000 // (en microsec) durée de déplacement dans une direction donnée (pendant 3 sec max)
 //#define SAFE_DISTANCE  JE SAIS PAS QUOI METTRE POUR L'INSTANT mais une distance de sécurité entre les robots pour éviter les collsiions ou qu'ils soient trop près
 
@@ -116,6 +116,7 @@ void user_init(void) {
     mydata->start_moving = 0;
     mydata->lastDir = 0;
     mydata->timer_init = 0;
+    pogobot_stopwatch_reset(&mydata->timer);
 
     for (uint8_t i = 0; i < 2; i++){
         mydata->neighbours_ids[i] = UINT16_MAX;
@@ -468,19 +469,30 @@ void user_step(void) {
                 pogobot_timer_init(&mydata->timer, WAIT_BEFORE_ELECTION);
                 mydata->timer_init = 1;
             } else {
-                if(!pogobot_timer_has_expired(&mydata->timer)) { // si le timer n'a tjr pas expiré
+                if(pogobot_timer_has_expired(&mydata->timer)) { // si le timer a  expiré
+                    pogobot_infrared_clear_message_queue();
                     pogobot_infrared_update();
+                    pogobot_led_setColor(255, 255, 0);
+                    //mydata->timer_init = 0;
+                    mydata->start_election = 1;
+
+                    // pogobot_infrared_update();
+                    // printf("TIMER NON FINI\n");
+                    // if (pogobot_infrared_message_available()){
+                    //     message_t msg;
+                    //     pogobot_infrared_recover_next_message(&msg);
+                    //     send_id(msg.payload[0]);
+                    // }
+                    // send_id(mydata->my_id);
+                } else {
+                    pogobot_infrared_update();
+                    printf("TIMER NON FINI\n");
                     if (pogobot_infrared_message_available()){
                         message_t msg;
                         pogobot_infrared_recover_next_message(&msg);
                         send_id(msg.payload[0]);
                     }
                     send_id(mydata->my_id);
-                } else if (pogobot_timer_has_expired(&mydata->timer)) { // si le timer a expiré
-                    pogobot_infrared_clear_message_queue();
-                    pogobot_infrared_update();
-                    //mydata->timer_init = 0;
-                    mydata->start_election = 1;
                 }
             }
 
