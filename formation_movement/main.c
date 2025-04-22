@@ -238,10 +238,19 @@ void user_step(void) {
                     uint16_t id_voisin = id_robots_dir[i][j];
 
                     // et s'il est plus petit que mon id et le plus proche de mon id, alors je garde en mémoire le robot à suivre et la direction à prendre 
-                    if(mon_id > id_voisin && (mon_id-id_voisin) < id_comparatif){
-                        id_comparatif = mon_id-id_voisin;
-                        direction_suivie = i;
-                        robot_suivi = id_voisin;
+                    if(mon_id > id_voisin && (mon_id-id_voisin) <= id_comparatif){
+
+                        // si c'est le même robot que le meilleur mais que cette fois on le détecte à droite ou à gauche, on privilégie le fait de tourner 
+                        if(robot_suivi == id_voisin && (i==1 || i==3)){
+                            direction_suivie = i;
+                        }
+
+                        // si c'est bien un meilleur robot, alors on le garde en mémoire ainsi que sa direction
+                        if(robot_suivi != id_voisin){
+                            id_comparatif = mon_id-id_voisin;
+                            direction_suivie = i;
+                            robot_suivi = id_voisin;
+                        }
                     }
                 }
             }
