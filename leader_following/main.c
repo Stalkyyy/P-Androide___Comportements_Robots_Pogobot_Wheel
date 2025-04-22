@@ -468,7 +468,7 @@ void user_step(void) {
                 pogobot_timer_init(&mydata->timer, WAIT_BEFORE_ELECTION);
                 mydata->timer_init = 1;
             } else {
-                if(!pogobot_timer_has_expired(&mydata->timer_init)) { // si le timer n'a tjr pas expiré
+                if(!pogobot_timer_has_expired(&mydata->timer)) { // si le timer n'a tjr pas expiré
                     pogobot_infrared_update();
                     if (pogobot_infrared_message_available()){
                         message_t msg;
@@ -476,7 +476,7 @@ void user_step(void) {
                         send_id(msg.payload[0]);
                     }
                     send_id(mydata->my_id);
-                } else if (pogobot_timer_has_expired(&mydata->timer_init)) { // si le timer a expiré
+                } else if (pogobot_timer_has_expired(&mydata->timer)) { // si le timer a expiré
                     pogobot_infrared_clear_message_queue();
                     pogobot_infrared_update();
                     //mydata->timer_init = 0;
