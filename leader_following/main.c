@@ -24,7 +24,7 @@ void move_right(void);
 void move_stop(void);
 void get_intensities(bool detection[]);
 
-void send_position(uint16_t type, uint16_t id, uint16_t ml, uint16_t mr, uint16_t dir);
+void send_position(uint16_t type, uint16_t id);
 void random_walk_leader(void);
 void follow_leader(void);
 
@@ -301,7 +301,7 @@ void follow_leader(void) {
                 //     move_stop();
                 //     send_position(POSITION_MSG, mydata->my_id, received_msg->dir);
                 // } 
-                else {
+                //else {
                     //printf("FOLLOWER WALK\n", direction);
                     // if (direction == 0){ //si predecesseur devant est détecté par en face 
                     //     // AJOUTER PEUT ETRE direction == 2 -> si le sens de la file indienne est inversée selon le leader élu
@@ -311,21 +311,20 @@ void follow_leader(void) {
                     //     // pogobot_motor_set(motorL, received_msg->motorL);
                     //     // pogobot_motor_set(motorR, received_msg->motorR);
                     // }
-                    if(direction == 1){ // si prédecesseur détecté à droite
-                        move_right();
-                        // pogobot_motor_set(motorL, motorHalf);
-                        // pogobot_motor_set(motorR, motorQuarter);
-                    }
-                    else if(direction == 3){ // si prédecesseur détecté à gauche
-                        move_left();
-                        // pogobot_motor_set(motorL, motorQuarter);
-                        // pogobot_motor_set(motorR, motorHalf);
-                    } else if (direction == 0){
-                        move_front();
-                    }
-
-                    send_position(POSITION_MSG, mydata->my_id);
+                if(direction == 1){ // si prédecesseur détecté à droite
+                    move_right();
+                    // pogobot_motor_set(motorL, motorHalf);
+                    // pogobot_motor_set(motorR, motorQuarter);
                 }
+                else if(direction == 3){ // si prédecesseur détecté à gauche
+                    move_left();
+                    // pogobot_motor_set(motorL, motorQuarter);
+                    // pogobot_motor_set(motorR, motorHalf);
+                } else if (direction == 0){
+                    move_front();
+                }
+                send_position(POSITION_MSG, mydata->my_id);
+                //}
             }
         }
     }
