@@ -10,7 +10,7 @@
  * On différenciera les robots à roues des robots à brosses, notamment pour leur manière de tourner.
  */
 
-#define SIMULATEUR true
+#define SIMULATEUR false // Permet de choisir si on utilise le cas réel ou simulateur (pour le calibrage).
 
 #define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
