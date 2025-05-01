@@ -10,6 +10,8 @@
  * On différenciera les robots à roues des robots à brosses, notamment pour leur manière de tourner.
  */
 
+#define SIMULATEUR false // Permet de choisir si on utilise le cas réel ou simulateur (pour le calibrage).
+
 #define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
 #define NO_TURN 'N'
@@ -103,7 +105,10 @@ void get_intensities(bool detection[]) {
 // Sinon (robot à brosse), il change la puissance des moteurs.
 
 void move_front(void) {
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
 
@@ -118,7 +123,10 @@ void move_front(void) {
 void move_left(void) {
     mydata->lastTurn = LEFT_TURN;
 
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
@@ -133,12 +141,15 @@ void move_left(void) {
 void move_right(void) {
     mydata->lastTurn = RIGHT_TURN;
 
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
