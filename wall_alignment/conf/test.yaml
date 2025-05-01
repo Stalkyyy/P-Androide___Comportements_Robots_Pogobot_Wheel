@@ -3,7 +3,7 @@
 window_width: 600       # In pixels
 window_height: 600      # In pixels
 
-arena_file: arenas/arena6.csv
+arena_file: arenas/square.csv
 arena_surface: 1.0e6    # In mm²
 
 delete_old_files: true
@@ -24,9 +24,9 @@ GUI: true
 # Time
 simulation_time: 500.0     # In s
 time_step: 0.01            # In s
-GUI_speed_up: 1         # How much the visualisation in the GUI should be sped up
+GUI_speed_up: 0.1         # How much the visualisation in the GUI should be sped up
 
-initial_formation: disk # Can be "random" (all robots are placed randomly in the arena), or "disk" (robots are placed uniformly in a disk shape at the center of the arena)
+initial_formation: random # Can be "random" (all robots are placed randomly in the arena), or "disk" (robots are placed uniformly in a disk shape at the center of the arena)
 
 
 # List of objects created in the simulation, by category
@@ -61,7 +61,7 @@ objects:
     # An object category containing the Pogobot robots
     robots:
         type: pogobot       # Category type pertaining to Pogobots
-        nb: 50            # Number of objects (Pogobots) in this category
+        nb: 15            # Number of objects (Pogobots) in this category
         geometry: disk                  # Pogobots are always disk-shaped
         radius: 26.5                    # In mm
 
@@ -74,11 +74,11 @@ objects:
 
         max_linear_speed: 100.0
         max_angular_speed: 1.0
-        linear_noise_stddev: 0.5
-        angular_noise_stddev: 2.0
+        linear_noise_stddev: 0.1
+        angular_noise_stddev: 0.1
 
         # Communication propeties
-        communication_radius: 80.0      # In mm, from each IR emitter. Pogobots typically have 4 IR emitters (front, left, back, right)
+        communication_radius: 50      # In mm, from each IR emitter. Pogobots typically have 4 IR emitters (front, left, back, right)
         msg_success_rate:
             #type: static # Fixed msg success rate -- do not depend on the density, or message size
             #rate: 0.9

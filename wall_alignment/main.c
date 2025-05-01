@@ -11,7 +11,6 @@
  * On suppose qu'une fois qu'on est arrêté, le robot ne sera pas déplacé.
  */
 
-#define SIMULATEUR true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse. 
 
 #define HAS_WHEEL true              // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 #define MICRO_SECS_TIMER 650000     // Le temps (en microsecondes) pour l'expiration du timer.
@@ -58,10 +57,14 @@ REGISTER_USERDATA(USERDATA);
 // Sinon (robot à brosse), il change la puissance des moteurs.
 
 void move_front(void) {
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorHalf);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 1);
+    pogobot_motor_dir_set(motorR, 0);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
 
@@ -71,10 +74,18 @@ void move_front(void) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
     }
+#endif
 }
 
 // Seulement pour les pogobots à roues.
 void move_back(void) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 0);
+    pogobot_motor_dir_set(motorR, 1);
+#else
     if (HAS_WHEEL) {
 
         pogobot_motor_set(motorL, mydata->motorLeft);
@@ -83,13 +94,18 @@ void move_back(void) {
         pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
         pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
     }
+#endif
 }
 
 void move_left(void) {
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorHalf);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 0);
+    pogobot_motor_dir_set(motorR, 0);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
@@ -99,22 +115,28 @@ void move_left(void) {
         pogobot_motor_set(motorL, motorStop);
         pogobot_motor_set(motorR, motorHalf);
     }
+#endif
 }
 
 void move_right(void) {
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorStop);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 1);
+    pogobot_motor_dir_set(motorR, 1);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
     }
+#endif
 }
 
 void move_stop(void) {
@@ -169,8 +191,8 @@ void user_init(void) {
 void user_step(void) {
 
     // Transmission d'un message pour différencier les robots des murs.
-    uint8_t msg_robot[] = "robot";
-    pogobot_infrared_sendLongMessage_omniSpe(msg_robot, sizeof(msg_robot));
+    // uint8_t msg_robot[7] = "robots";
+    // pogobot_infrared_sendLongMessage_omniSpe(msg_robot, sizeof(msg_robot));
 
     pogobot_infrared_update();
     while(pogobot_infrared_message_available()){
@@ -179,13 +201,15 @@ void user_step(void) {
         pogobot_infrared_recover_next_message(&msg);
 
         // Cas où le mur est détecté.
-        if(memcmp(msg_robot, msg.payload, sizeof(msg_robot)) != 0){
+        uint8_t wall_msg[5] = "wall";
+        if(memcmp(wall_msg, msg.payload, sizeof(wall_msg)) == 0) {
 
             // =====================================================================
 
             // Si on a jamais détecté un mur, alors on lance le timer d'arrêt.
             if(!mydata->wall_detected){
                 mydata->wall_detected = true;
+                printf("DETECTED\n");
                 pogobot_timer_init(&mydata->wall_timer, MICRO_SECS_TIMER);
             }
 
@@ -202,10 +226,15 @@ void user_step(void) {
                 pogobot_led_setColor(0, 255, 0);
 
                 // Robots à brosse
-                if (SIMULATEUR || !HAS_WHEEL) {
+                #ifdef SIMULATOR
+                    move_front();
+                    return;
+                #else
+                if (HAS_WHEEL) {
                     move_front();
                     return;
                 }
+                #endif
 
                 // Robots à roues
                 switch (msg.header._receiver_ir_index) {
@@ -224,9 +253,8 @@ void user_step(void) {
         
         // Cas où un robot est détecté.
         // else { 
-        //     if(msg.header._receiver_ir_index == 0 && msg.header._sender_ir_index == 2){
-        //         move_right(); // on change de direction pour ne plus être derrière lui
-        //     }
+        //     if (msg.header._receiver_ir_index == ir_front)
+        //         move_right();
         // }
     }
 
@@ -242,11 +270,43 @@ void user_step(void) {
  */
 
 
+bool ping_walls(void) {
+    uint8_t ping_message[5] = {"wall"};
+    return pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+}
+
+void walls_user_init(void) {
+#ifndef SIMULATOR
+    printf("setup ok\n");
+#endif
+    // Initialize the random number generator
+    srand(pogobot_helper_getRandSeed());
+    pogobot_infrared_set_power(3);
+
+    main_loop_hz = 45;
+    max_nb_processed_msg_per_tick = 0;
+    percent_msgs_sent_per_ticks = 100;
+    msg_rx_fn = NULL;
+    msg_tx_fn = ping_walls;
+    error_codes_led_idx = -1;
+}
+
+void walls_user_step(void) {
+    // ...
+}
+
+
+/*
+ * ====================================================================================
+ */
+
+
 int main(void) {
     pogobot_init();     
 #ifndef SIMULATOR
     printf("init ok\n");
 #endif
     pogobot_start(user_init, user_step);
+    pogobot_start(walls_user_init, walls_user_step, "walls");
     return 0;
 }
