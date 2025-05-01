@@ -10,8 +10,6 @@
  * On différenciera les robots à roues des robots à brosses, notamment pour leur manière de tourner.
  */
 
-#define SIMULATEUR false // Permet de choisir si on utilise le cas réel ou simulateur (pour le calibrage).
-
 #define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
 #define NO_TURN 'N'
@@ -27,7 +25,7 @@ int16_t max(int16_t a, int16_t b);
 int16_t min(int16_t a, int16_t b);
 
 void ping_robots(void);
-void get_intensities(bool detection[]);
+void observe(bool detection[]);
 
 void move_front(void);
 void move_left(void);
@@ -35,6 +33,8 @@ void move_right(void);
 void move_stop(void);
 void random_or_follow_turn(void);
 void move_logic(bool *detection);
+
+bool ping_walls(void);
 
 /*
  * ====================================================================================
@@ -83,14 +83,15 @@ void ping_robots(void) {
 }
 
 
-void get_intensities(bool detection[]) {
+void observe(bool detection[]) {
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
 
         int sensor_id = msg.header._receiver_ir_index;
-        if (sensor_id >= 0 && sensor_id < 4) {
+
+        if (sensor_id >= 0 && sensor_id < 5) {
             detection[sensor_id] = true;
         }
     }
@@ -105,10 +106,11 @@ void get_intensities(bool detection[]) {
 // Sinon (robot à brosse), il change la puissance des moteurs.
 
 void move_front(void) {
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorHalf);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorHalf);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
 
@@ -118,15 +120,17 @@ void move_front(void) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
     }
+#endif
 }
 
 void move_left(void) {
     mydata->lastTurn = LEFT_TURN;
 
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorStop);
-        pogobot_motor_set(motorR, motorHalf);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorStop);
+    pogobot_motor_set(motorR, motorHalf);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
@@ -136,15 +140,17 @@ void move_left(void) {
         pogobot_motor_set(motorL, motorStop);
         pogobot_motor_set(motorR, motorHalf);
     }
+#endif
 }
 
 void move_right(void) {
     mydata->lastTurn = RIGHT_TURN;
 
-    if (SIMULATEUR) {
-        pogobot_motor_set(motorL, motorHalf);
-        pogobot_motor_set(motorR, motorStop);
-    } else if (HAS_WHEEL) {
+#ifdef SIMULATOR
+    pogobot_motor_set(motorL, motorHalf);
+    pogobot_motor_set(motorR, motorStop);
+#else
+    if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
@@ -154,6 +160,7 @@ void move_right(void) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
     }
+#endif
 }
 
 void move_stop(void) {
@@ -190,15 +197,20 @@ void move_logic(bool *detection) {
     bool sensorRight = detection[1];
     // bool sensorBack = detection[2];
     bool sensorLeft = detection[3];
+    bool sensorEverywhere = detection[4]; // Dans le cas du simulateur.
 
     // Pour les leds
     int r = 0, g = 0, b = 0;
 
-    if (sensorFront && sensorLeft && sensorRight) {
+    if ((sensorFront && sensorLeft && sensorRight) || sensorEverywhere) {
+    #ifdef SIMULATOR
+        random_or_follow_turn();
+    #else
         if (HAS_WHEEL)
             random_or_follow_turn();
         else
             move_stop();
+    #endif
     }
 
     else if (sensorLeft && sensorRight) {
@@ -272,12 +284,41 @@ void user_init(void) {
 
 
 void user_step(void) {
-    bool detection[4] = {false, false, false, false};
+    bool detection[5] = {false, false, false, false, false};
     ping_robots();
-    get_intensities(detection);
+    observe(detection);
     move_logic(detection);
 }
 
+
+/*
+ * ====================================================================================
+ */
+
+bool ping_walls(void) {
+    uint8_t ping_message[5] = {"wall"};
+    return pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+}
+
+void walls_user_init(void) {
+#ifndef SIMULATOR
+    printf("setup ok\n");
+#endif
+    // Initialize the random number generator
+    srand(pogobot_helper_getRandSeed());
+    pogobot_infrared_set_power(3);
+
+    main_loop_hz = 45;
+    max_nb_processed_msg_per_tick = 0;
+    percent_msgs_sent_per_ticks = 100;
+    msg_rx_fn = NULL;
+    msg_tx_fn = ping_walls;
+    error_codes_led_idx = -1;
+}
+
+void walls_user_step(void) {
+    // ...
+}
 
 /*
  * ====================================================================================
@@ -290,5 +331,6 @@ int main(void) {
     printf("init ok\n");
 #endif
     pogobot_start(user_init, user_step);
+    pogobot_start(walls_user_init, walls_user_step, "walls");
     return 0;
 }
