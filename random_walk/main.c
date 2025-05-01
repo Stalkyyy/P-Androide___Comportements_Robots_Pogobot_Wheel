@@ -109,6 +109,10 @@ void move_front(void) {
 #ifdef SIMULATOR
     pogobot_motor_set(motorL, motorHalf);
     pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 1);
+    pogobot_motor_dir_set(motorR, 0);
+
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
@@ -127,8 +131,11 @@ void move_left(void) {
     mydata->lastTurn = LEFT_TURN;
 
 #ifdef SIMULATOR
-    pogobot_motor_set(motorL, motorStop);
+    pogobot_motor_set(motorL, motorHalf);
     pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 0);
+    pogobot_motor_dir_set(motorR, 0);
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
@@ -148,7 +155,10 @@ void move_right(void) {
 
 #ifdef SIMULATOR
     pogobot_motor_set(motorL, motorHalf);
-    pogobot_motor_set(motorR, motorStop);
+    pogobot_motor_set(motorR, motorHalf);
+
+    pogobot_motor_dir_set(motorL, 1);
+    pogobot_motor_dir_set(motorR, 1);
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
@@ -204,7 +214,10 @@ void move_logic(bool *detection) {
 
     if ((sensorFront && sensorLeft && sensorRight) || sensorEverywhere) {
     #ifdef SIMULATOR
-        random_or_follow_turn();
+        if (pogobot_ticks % 4 == 0)
+            move_front();
+        else
+            random_or_follow_turn();
     #else
         if (HAS_WHEEL)
             random_or_follow_turn();
