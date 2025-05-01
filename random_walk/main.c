@@ -134,7 +134,7 @@ void move_left(void) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
 
-        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1 % 2));
+        pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
         pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
         pogobot_motor_set(motorL, motorStop);
