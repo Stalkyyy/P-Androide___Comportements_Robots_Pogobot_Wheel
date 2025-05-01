@@ -9,9 +9,6 @@
 #define LEFT_TURN 'L'
 #define RIGHT_TURN 'R'
 
-// Seuil à partir duquel le robot réagit à la présence d'autres robots
-#define SEUIL_DETECTION_DISPERSION 2
-
 // Structure contenant les paramètres du robot
 typedef struct {
     time_reference_t timer_it; // Timer interne pour les mesures temporelles
@@ -28,7 +25,11 @@ REGISTER_USERDATA(USERDATA);
 // Fonction d'envoi d'un message IR de présence
 void ping_robots(void) {
     uint8_t ping_message[7] = {"robots"};
-    pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+
+    for (int i = 1; i < 4; i++) {
+        pogobot_infrared_set_power(i);
+        pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
+    }
 }
 
 // Mouvement vers l'avant
@@ -108,44 +109,27 @@ void user_step(void) {
     bool direction_detected[4] = {false, false, false, false}; // 0: avant, 1: droite, 2: arrière, 3: gauche
     ping_robots();
     pogobot_infrared_update();
-
+ 
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
-        int ir_direction = msg.header._receiver_ir_index;
-        if (ir_direction >= 0 && ir_direction < 4) {
-            direction_detected[ir_direction] = true;
-        }
     }
-
-    // Compte combien de directions ont détecté un robot
-    int total_detected = 0;
-    for (int i = 0; i < 4; i++) {
-        if (direction_detected[i]) total_detected++;
-    }
-
-    // Si assez de robots sont détectés, entre en mode dispersion
-    if (total_detected >= SEUIL_DETECTION_DISPERSION) {
-        move_left(); // stratégie simple : tourner à gauche
-        pogobot_led_setColor(255, 0, 255); // LED magenta pour alerte
-        return;
-    }
-
-
-
+    
     // Couleurs RGB pour feedback LED
     int r = 0, g = 0, b = 0;
 
     // Logique de déplacement selon les directions détectées
-    if (direction_detected[1] && !direction_detected[3]) {
-        move_left(); r = 255; g = 255; b = 0; // robot à droite
-    } else if (direction_detected[3] && !direction_detected[1]) {
-        move_right(); r = 255; g = 255; b = 0; // robot à gauche
-    } else if (direction_detected[2]) {
-        move_front(); r = 0; g = 255; b = 0; // robot derrière
-    } else if (direction_detected[1] && direction_detected[3]) {
-        move_front(); r = 0; g = 255; b = 255; // robot des deux côtés
-    } else {
+        if (direction_detected[0]) {
+            move_left(); r = 255; g = 128; b = 0; // robot détecté devant
+        } else if (direction_detected[1] && direction_detected[3] ) {
+            move_front(); r = 0; g = 255; b = 255; // robot des deux côtés
+        } else if(direction_detected[1] && !direction_detected[3]) {
+            move_left(); r = 255; g = 255; b = 0; // robot à droite
+        } else if (direction_detected[3] && !direction_detected[1]) {
+            move_right(); r = 255; g = 255; b = 0; // robot à gauche
+        }else if (direction_detected[2]) {
+            move_front(); r = 0; g = 255; b = 0; // robot derrière
+        }else {
         move_stop(); r = 0; g = 0; b = 255; // aucun robot
     }
     pogobot_led_setColor(r,g,b); // mise à jour de la couleur LED
