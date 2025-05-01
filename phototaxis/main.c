@@ -2,12 +2,23 @@
 // Main include for pogobots, both for real robots and for simulations
 #include "pogobase.h"
 
-#define THRESOLD_IS_FRONT 15
+/**
+ * On suppose ici que l'utilisateur a calibré les pogobots individuellement pour la marche avant.
+ * Le calibrage sera récupérable avec pogobot_motor_power_mem_get(). 
+ * 
+ * On différenciera les robots à roues des robots à brosses, notamment pour leur manière de tourner.
+ */
+
+
+#define SIMULATEUR false // Permet de choisir si on utilise le cas réel ou simulateur (pour le calibrage).
 
 #define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 #define NO_TURN 'N'
 #define LEFT_TURN 'L'
 #define RIGHT_TURN 'R'
+
+#define THRESOLD_IS_FRONT 15
+
 
 
 typedef struct {
@@ -25,7 +36,6 @@ typedef struct {
 
 DECLARE_USERDATA(USERDATA);
 REGISTER_USERDATA(USERDATA);
-
 
 
 
@@ -70,7 +80,10 @@ int16_t max3(int16_t a, int16_t b, int16_t c) {
 // Sinon (robot à brosse), il change la puissance des moteurs.
 
 void move_front(void) {
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorHalf);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
 
@@ -83,7 +96,10 @@ void move_front(void) {
 }
 
 void move_left(uint16_t power) {
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorStop);
+        pogobot_motor_set(motorR, motorHalf);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, power);
         pogobot_motor_set(motorR, power);
 
@@ -96,7 +112,10 @@ void move_left(uint16_t power) {
 }
 
 void move_right(uint16_t power) {
-    if (HAS_WHEEL) {
+    if (SIMULATEUR) {
+        pogobot_motor_set(motorL, motorHalf);
+        pogobot_motor_set(motorR, motorStop);
+    } else if (HAS_WHEEL) {
         pogobot_motor_set(motorL, power);
         pogobot_motor_set(motorR, power);
 
