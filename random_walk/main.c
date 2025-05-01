@@ -92,7 +92,6 @@ void get_intensities(bool detection[]) {
         int sensor_id = msg.header._receiver_ir_index;
         if (sensor_id >= 0 && sensor_id < 4) {
             detection[sensor_id] = true;
-            printf("Sensor : %d\n", sensor_id);
         }
     }
 }
