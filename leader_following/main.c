@@ -22,11 +22,11 @@ void move_front(void);
 void move_left(void);
 void move_right(void);
 void move_stop(void);
-void get_intensities(bool detection[]);
 
+void observe(bool detection[]);
 void send_position(uint16_t type, uint16_t id);
-void random_walk_leader(void);
-void follow_leader(void);
+void random_walk_leader(bool *detection);
+void follow_leader(bool *detection);
 
 // struct du message concernant position du leader à suivre
 typedef struct {
@@ -62,6 +62,7 @@ typedef struct {
     uint8_t dirRight;
     uint8_t dirLeft;
     int lastDir;
+    int leader_dir; // direction du leader choisie aléatoirement (valeur conservée pendant 3 sec)
 } USERDATA;
 
 DECLARE_USERDATA(USERDATA);
@@ -105,6 +106,7 @@ void user_init(void) {
     mydata->nb_robots = 1;
     mydata->start_moving = 0;
     mydata->lastDir = 0;
+    mydata->leader_dir = UINT16_MAX;
     mydata->timer_init = 0;
     pogobot_stopwatch_reset(&mydata->timer);
 
@@ -184,15 +186,28 @@ void move_stop(void) {
     pogobot_motor_set(motorR, motorStop);
 }
 
-void get_intensities(bool detection[]) {
+void observe(bool detection[]) {
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
+        POSITIONMSG* received_msg = (POSITIONMSG *)msg.payload;
 
-        int sensor_id = msg.header._receiver_ir_index;
-        if (sensor_id >= 0 && sensor_id < 4) {
-            detection[sensor_id] = true;
+        if(received_msg->type == POSITION_MSG){
+            int sensor_id = msg.header._receiver_ir_index;
+
+            if (mydata->is_leader == 0){
+                uint16_t sender_id =  msg.header._sender_id;
+                if (sender_id == mydata->predecessor_id){
+                    if (sensor_id >= 0 && sensor_id < 4) {
+                        detection[sensor_id] = true;
+                    }
+                }
+            } else {
+                if (sensor_id >= 0 && sensor_id < 4) {
+                    detection[sensor_id] = true;
+                }
+            }
         }
     }
 }
@@ -201,133 +216,117 @@ void get_intensities(bool detection[]) {
 
 void send_position(uint16_t type, uint16_t id) {
     POSITIONMSG msg = { type, id };
-    pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&msg, sizeof(msg));
-    pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&msg, sizeof(msg));
-    // int retransmit_count = 3;
-    // while (retransmit_count > 0){
-    //     pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&msg, sizeof(msg));
-    //     retransmit_count--;
-    // }
+    // envoi multiple du message à différents pas de temps pour une transmission réussie (notamment dans le cas de bruitage)
+    int retransmit_count = 5;
+    while (retransmit_count > 0){
+        static uint32_t last_sent = 0;
+        if (pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it) - last_sent > 20000) { // après 0.02 sec, semble suffisant
+            pogobot_infrared_sendLongMessage_omniSpe((uint8_t *)&msg, sizeof(msg));
+            last_sent = pogobot_stopwatch_get_elapsed_microseconds(&mydata->timer_it);
+            retransmit_count--;
+        }
+    }
 }
 
-void random_walk_leader(void) {
+void random_walk_leader(bool *detection) {
     if (mydata->is_leader == 0 || mydata->start_moving == 0) return;
 
-    // si rencontre un obstacle -> AJOUT DE CETTE PARTIE DE CODE DÈS QUE MOUVEMENT OK
-    // pogobot_infrared_update();
-    // if(pogobot_infrared_message_available()){
-    //     message_t msg;
-    //     pogobot_infrared_recover_next_message(&msg);
-    //     uint8_t direction = msg.header._receiver_ir_index;
-    //     if(direction == 1){
-    //         move_left();
-    //     } else if (direction == 3){
-    //         move_rigth();
-    //     }
-    // }
+    // après avoir commencé le mouvement seulement, vérification d'obstacle et de perte de successeur
+    if(mydata->leader_dir != UINT16_MAX){
+        // pogobot_infrared_update();
+        // if(!pogobot_infrared_message_available()){
+        //     move_stop();
+        //     return;
+        // } 
 
-    int random_direction = rand() % 3; // 0: tout droit, 1: droite, 2: gauche
+        //bool sensorFront = detection[0];
+        bool sensorRight = detection[1];
+        bool sensorBack = detection[2];
+        bool sensorLeft = detection[3];
 
-    if(random_direction == 0){ // tout droit
-        mydata->lastDir = random_direction;
-        move_front();
-    } else if (random_direction == 1){ // vers la droite
-        if (mydata->lastDir == random_direction){ // si dernière direction était vers la droite, va à gauche
-            mydata->lastDir = 2;
-            move_left();
-        } else {
-            mydata->lastDir = random_direction;
-            move_right();
-        }
-    } else if(random_direction == 2){ // vers la gauche
-        if (mydata->lastDir == random_direction){ // si dernière direction était vers la gauche, va à droite
-            mydata->lastDir = 1;
-            move_right();
-        } else {
-            mydata->lastDir = random_direction;
-            move_left();
-        }
-    }
-    // } else { // random_direction == 3 -> ARRÊT
-    //     if (mydata->lastDir == 3){ // si dernière direction était stop, va tout droit
-    //         mydata->lastDir = 0;
-    //         move_front();
-    //     } else {
-    //         mydata->lastDir = 3;
-    //         move_stop();
-    //     }
-    // }
-
-    if(random_direction == 0){
-        time_reference_t timer;
-        // pogobot_timer_init(&timer, WALK_IN_DIRECTION_TIME);
-        pogobot_stopwatch_reset(&timer);
-        // while (!pogobot_timer_has_expired(&timer)){
-        while(pogobot_stopwatch_get_elapsed_microseconds(&timer) < WALK_IN_DIRECTION_TIME){
-            // printf("TIMER NON FINI %d", pogobot_timer_get_remaining_microseconds(&timer));
-            //printf("TIMER NON FINI %d -> direction  %d\n", pogobot_stopwatch_get_elapsed_microseconds(&timer), random_direction);
-            send_position(POSITION_MSG, mydata->my_id);
-        }
-    }
-    else { // si tourne à droite ou à gauche, envoi simplement du msg 
-        send_position(POSITION_MSG, mydata->my_id);
-    }
-    
-}
-
-void follow_leader(void) {
-    if (mydata->is_leader == 1) return;
-
-    pogobot_infrared_update();
-    
-    if(!pogobot_infrared_message_available()){ // cela veut dire que le leader n'a toujours pas commencé à bouger
-        move_stop();
-        return;
-    }
-
-    while (pogobot_infrared_message_available()){
-        message_t msg;
-        pogobot_infrared_recover_next_message(&msg);
-        POSITIONMSG* received_msg = (POSITIONMSG *)msg.payload;
-        //printf("Message position reçu: %d, %d, %d\n", received_msg->type, received_msg->id, received_msg->dir);
-
-        if(received_msg->type == POSITION_MSG){
-            int direction = msg.header._receiver_ir_index;
-
-            if (received_msg->id == mydata->predecessor_id) {
-                //printf("DIRECTION DU PRED %d\n", received_msg->dir);
-                // if(received_msg->dir == 3){ // si le prédecesseur est arrêté, s'arrête aussi
-                //     //printf("FOLLOWER STOP\n");
-                //     move_stop();
-                //     send_position(POSITION_MSG, mydata->my_id, received_msg->dir);
-                // } 
-                //else {
-                    //printf("FOLLOWER WALK\n", direction);
-                    // if (direction == 0){ //si predecesseur devant est détecté par en face 
-                    //     // AJOUTER PEUT ETRE direction == 2 -> si le sens de la file indienne est inversée selon le leader élu
-                    //     move_front();
-                    //     // pogobot_motor_set(motorL, motorHalf);
-                    //     // pogobot_motor_set(motorR, motorHalf);
-                    //     // pogobot_motor_set(motorL, received_msg->motorL);
-                    //     // pogobot_motor_set(motorR, received_msg->motorR);
-                    // }
-                if(direction == 1){ // si prédecesseur détecté à droite
-                    move_right();
-                    // pogobot_motor_set(motorL, motorHalf);
-                    // pogobot_motor_set(motorR, motorQuarter);
-                }
-                else if(direction == 3){ // si prédecesseur détecté à gauche
-                    move_left();
-                    // pogobot_motor_set(motorL, motorQuarter);
-                    // pogobot_motor_set(motorR, motorHalf);
-                } else if (direction == 0){
-                    move_front();
-                }
+        if(!sensorBack) { // si ne reçoit plus de message de son successeur, alors ARRÊT
+            move_stop();
+            send_position(POSITION_MSG, mydata->my_id); // envoi quand même un message au cas où son successeur aurait retrouvé la trace
+            return;
+        } else { // évitement d'obstacle
+            if (sensorRight && sensorBack){ // obstacle à droite
+                move_left();
+                send_position(POSITION_MSG, mydata->my_id);  // envoie quand même msg pour son successeur si le suit tjr
+                // pogobot_infrared_clear_message_queue();
+                // pogobot_infrared_update();
+                return;
+            } else if (sensorLeft && sensorBack) { // obstacle à gauche
+                move_right();
                 send_position(POSITION_MSG, mydata->my_id);
-                //}
+                // pogobot_infrared_clear_message_queue();
+                // pogobot_infrared_update();
+                return;
             }
         }
     }
+
+    if(mydata->timer_init == 0){
+        mydata->leader_dir = rand() % 3; // 0: tout droit, 1: droite, 2: gauche
+
+        if(mydata->leader_dir == 0){ // tout droit
+            mydata->lastDir = mydata->leader_dir;
+            move_front();
+        } else if (mydata->leader_dir == 1){ // vers la droite
+            if (mydata->lastDir == mydata->leader_dir){ // si dernière direction était vers la droite, va à gauche
+                mydata->lastDir = 2;
+                move_left();
+            } else {
+                mydata->lastDir = mydata->leader_dir;
+                move_right();
+            }
+        } else if(mydata->leader_dir == 2){ // vers la gauche
+            if (mydata->lastDir == mydata->leader_dir){ // si dernière direction était vers la gauche, va à droite
+                mydata->lastDir = 1;
+                move_right();
+            } else {
+                mydata->lastDir = mydata->leader_dir;
+                move_left();
+            }
+        }
+        pogobot_timer_init(&mydata->timer, WALK_IN_DIRECTION_TIME);
+        mydata->timer_init = 1;
+    }
+
+    if(mydata->timer_init == 1){
+        if(pogobot_timer_has_expired(&mydata->timer)){ // timer expiré, changement de direction au prochain tour de user_step()
+            mydata->timer_init = 0;
+        }
+        send_position(POSITION_MSG, mydata->my_id);
+    }
+    
+    // il faut forcément vider régulièrement la "boîte aux lettres" du leader pour ne pas conserver
+    // les anciens messages de son successeur qui l'empêcheraient de voir si ce dernier lui a envoyé récemment
+    // un message ou pas (et donc s'ils sont trop éloignés). (Si ce n'est pas fait, le leader s'arrêtera trop tard)
+    // (pas sûre si c'est bon comme strat, à tester irl)
+    // autre idée si celle-ci ne fonctionne pas -> stocker le temps auquel le dernier msg à été reçu, puis à chaque pas de temps, vérifier si ce temps est au dessus d'un ncertain intervalle
+    pogobot_infrared_clear_message_queue();
+    pogobot_infrared_update();
+}
+
+void follow_leader(bool *detection) {
+    if (mydata->is_leader == 1) return;
+
+    bool sensorFront = detection[0];
+    bool sensorRight = detection[1];
+    // bool sensorBack = detection[2];
+    bool sensorLeft = detection[3];
+
+    if (sensorFront && sensorRight){
+        move_right();
+    }
+    else if (sensorFront && sensorLeft){
+        move_left();
+    }
+    else if (sensorFront){
+        move_front();
+    }
+    send_position(POSITION_MSG, mydata->my_id);
+
 }
 
 void user_step(void) {
@@ -357,7 +356,7 @@ void user_step(void) {
                 pogobot_timer_init(&mydata->timer, WAIT_BEFORE_ELECTION);
                 mydata->timer_init = 1;
             } else {
-                if(pogobot_timer_has_expired(&mydata->timer)) { // si le timer a  expiré
+                if(pogobot_timer_has_expired(&mydata->timer)) { // si le timer a  expiré, établissement des rôles
                     if((mydata->predecessor_id != UINT16_MAX && mydata->robot_behind == 0) || (mydata->predecessor_id != UINT16_MAX && mydata->robot_behind == 1)){
                         pogobot_led_setColor(0, 0, 255); // bleu follower
                         mydata->has_leader = 1;
@@ -405,8 +404,10 @@ void user_step(void) {
                 }
             }
         }
-        random_walk_leader();
-        follow_leader();
+        bool detection[4] = {false, false, false, false};
+        observe(detection);
+        random_walk_leader(detection);
+        follow_leader(detection);
     }
 }
 
