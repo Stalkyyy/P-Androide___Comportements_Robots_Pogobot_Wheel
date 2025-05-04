@@ -35,6 +35,8 @@ void random_or_follow_turn(void);
 void move_logic(bool *detection);
 
 bool ping_walls(void);
+void walls_user_init(void);
+void walls_user_step(void);
 
 /*
  * ====================================================================================
