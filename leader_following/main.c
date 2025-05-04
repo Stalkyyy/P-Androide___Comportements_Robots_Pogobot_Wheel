@@ -160,8 +160,13 @@ void move_left(void) {
         pogobot_motor_set(motorL, motorQuarter);
         pogobot_motor_set(motorR, mydata->motorRight);
 
-        pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, mydata->dirRight);
+        if (mydata->is_leader == 0){
+            pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
+            pogobot_motor_dir_set(motorR, mydata->dirRight);
+        } else {
+            pogobot_motor_dir_set(motorL, mydata->dirLeft);
+            pogobot_motor_dir_set(motorR, mydata->dirRight);
+        }
     } else {
         pogobot_motor_set(motorL, motorStop);
         pogobot_motor_set(motorR, motorHalf);
@@ -173,8 +178,13 @@ void move_right(void) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, motorQuarter);
 
-        pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, mydata->dirRight);
+        if (mydata->is_leader == 0){
+            pogobot_motor_dir_set(motorL, mydata->dirLeft);
+            pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
+        } else {
+            pogobot_motor_dir_set(motorL, mydata->dirLeft);
+            pogobot_motor_dir_set(motorR, mydata->dirRight);
+        }
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
@@ -237,13 +247,13 @@ void random_walk_leader(bool *detection) {
         bool sensorBack = detection[2];
         bool sensorLeft = detection[3];
 
-        if (sensorRight && sensorBack){ // obstacle à droite
+        if (sensorRight){ // obstacle à droite
             move_left();
             send_position(POSITION_MSG, mydata->my_id);  // envoie quand même msg pour son successeur si le suit tjr
             // pogobot_infrared_clear_message_queue();
             // pogobot_infrared_update();
             return;
-        } else if (sensorLeft && sensorBack) { // obstacle à gauche
+        } else if (sensorLeft) { // obstacle à gauche
             move_right();
             send_position(POSITION_MSG, mydata->my_id);
             // pogobot_infrared_clear_message_queue();
