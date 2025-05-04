@@ -35,6 +35,8 @@ void random_or_follow_turn(void);
 void move_logic(bool *detection);
 
 bool ping_walls(void);
+void walls_user_init(void);
+void walls_user_step(void);
 
 /*
  * ====================================================================================
@@ -230,11 +232,11 @@ void move_logic(bool *detection) {
         move_front();
     } 
 
-    else if ((sensorFront && sensorRight)) {
+    else if (sensorRight) {
         move_left();
     }
 
-    else if ((sensorFront && sensorLeft)) {
+    else if (sensorLeft) {
         move_right();
     }
 
