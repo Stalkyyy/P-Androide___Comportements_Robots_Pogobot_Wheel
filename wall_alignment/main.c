@@ -27,6 +27,10 @@ void move_right(void);
 void move_back(void);
 void move_stop(void);
 
+bool ping_walls(void);
+void walls_user_init(void);
+void walls_user_step(void);
+
 /*
  * ====================================================================================
  */
@@ -225,12 +229,10 @@ void user_step(void) {
             else {
                 pogobot_led_setColor(0, 255, 0);
 
-                // Robots à brosse
                 #ifdef SIMULATOR
-                    move_front();
-                    return;
+                    // Robot à roues.
                 #else
-                if (HAS_WHEEL) {
+                if (!HAS_WHEEL) {
                     move_front();
                     return;
                 }

@@ -24,7 +24,7 @@ GUI: true
 # Time
 simulation_time: 500.0     # In s
 time_step: 0.01            # In s
-GUI_speed_up: 0.1         # How much the visualisation in the GUI should be sped up
+GUI_speed_up: 0.005        # How much the visualisation in the GUI should be sped up
 
 initial_formation: random # Can be "random" (all robots are placed randomly in the arena), or "disk" (robots are placed uniformly in a disk shape at the center of the arena)
 
@@ -47,7 +47,7 @@ objects:
     walls:
         type: pogowall      # Category type for Pogowalls
         geometry: arena     # Shape of the object. "Arena" means it will use the walls of the entire arena specified by "arena_file" (cf top of config file)
-        communication_radius: 80  # The communication ratius of the Pogowalls, in mm
+        communication_radius: 60  # The communication ratius of the Pogowalls, in mm
         msg_success_rate:
             type: static # Fixed msg success rate -- do not depend on the density, or message size
             rate: 0.9
@@ -61,7 +61,7 @@ objects:
     # An object category containing the Pogobot robots
     robots:
         type: pogobot       # Category type pertaining to Pogobots
-        nb: 15            # Number of objects (Pogobots) in this category
+        nb: 1            # Number of objects (Pogobots) in this category
         geometry: disk                  # Pogobots are always disk-shaped
         radius: 26.5                    # In mm
 
