@@ -2,56 +2,122 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define HAS_WHEEL true // Utiliser les réglages spécifiques pour les robots à roues
-#define motorSpeed 1023 // Puissance maximale pour les moteurs
+/**
+ * On suppose ici que l'utilisateur a calibré les pogobots individuellement pour la marche avant.
+ * La vitesse devrait être également pris en compte pour que, le cas d'un face à face, ils puissent se détecter sans collision (probablement pour les pogobots à roues).
+ * Le calibrage sera récupérable avec pogobot_motor_power_mem_get(). 
+ * 
+ * On différenciera les robots à roues des robots à brosses, notamment pour leur manière de tourner.
+ */
+
+#define HAS_WHEEL true // Permet de choisir le cas où c'est un robot à roue, ou un robot à brosse.
 
 #define NO_TURN 'N'
 #define LEFT_TURN 'L'
 #define RIGHT_TURN 'R'
 
-// Structure des données utilisateur, utilisée pour stocker l'état du robot
+/*
+ * ====================================================================================
+ */
+
+// Prototypes des fonctions
+int16_t max(int16_t a, int16_t b);
+int16_t min(int16_t a, int16_t b);
+
+void ping_robots(void);
+void observe(bool detection[]);
+
+void move_front(void);
+void move_left(void);
+void move_right(void);
+void move_stop(void);
+void random_or_follow_turn(void);
+void move_logic(bool *detection);
+
+bool ping_walls(void);
+
+/*
+ * ====================================================================================
+ */
+
+
 typedef struct {
-    time_reference_t timer_it; // Chronomètre interne
-    uint16_t motorLeft;        // Vitesse calibrée du moteur gauche
-    uint8_t dirLeft;           // Direction du moteur gauche
-    uint16_t motorRight;       // Vitesse calibrée du moteur droit
-    uint8_t dirRight;          // Direction du moteur droit
-    char lastTurn;             // Dernier virage effectué
+    uint8_t data_foo[8];
+    time_reference_t timer_it;
+
+    uint16_t motorLeft;
+    uint8_t dirLeft;
+
+    uint16_t motorRight;
+    uint8_t dirRight;
+
+    char lastTurn;
 } USERDATA;
 
 DECLARE_USERDATA(USERDATA);
 REGISTER_USERDATA(USERDATA);
 
-// Envoie un message IR pour que les autres robots puissent nous détecter
+
+/*
+ * ====================================================================================
+ */
+
+
+int16_t max(int16_t a, int16_t b) {
+    return a > b ? a : b;
+}
+
+int16_t min(int16_t a, int16_t b) {
+    return a < b ? a : b;
+}
+
+
+/*
+ * ====================================================================================
+ */
+
+
 void ping_robots(void) {
     uint8_t ping_message[7] = {"robots"};
     pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
 }
 
-// Met à jour le tableau `detection[]` avec les directions d'où des messages ont été reçus
+
 void observe(bool detection[]) {
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t msg;
         pogobot_infrared_recover_next_message(&msg);
+
         int sensor_id = msg.header._receiver_ir_index;
+
         if (sensor_id >= 0 && sensor_id < 5) {
             detection[sensor_id] = true;
         }
     }
 }
 
-// Fonction de déplacement vers l'avant
+
+/*
+ * ====================================================================================
+ */
+
+// Si le robot a des roues, il ne change pas sa puissance, mais uniquement la direction du moteur.
+// Sinon (robot à brosse), il change la puissance des moteurs.
+
 void move_front(void) {
 #ifdef SIMULATOR
     pogobot_motor_set(motorL, motorHalf);
     pogobot_motor_set(motorR, motorHalf);
+
     pogobot_motor_dir_set(motorL, 1);
     pogobot_motor_dir_set(motorR, 0);
+
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, mydata->motorLeft);
         pogobot_motor_set(motorR, mydata->motorRight);
+
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
         pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
@@ -61,18 +127,20 @@ void move_front(void) {
 #endif
 }
 
-// Tourne à gauche
 void move_left(void) {
     mydata->lastTurn = LEFT_TURN;
+
 #ifdef SIMULATOR
     pogobot_motor_set(motorL, motorHalf);
     pogobot_motor_set(motorR, motorHalf);
+
     pogobot_motor_dir_set(motorL, 0);
     pogobot_motor_dir_set(motorR, 0);
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
+
         pogobot_motor_dir_set(motorL, (mydata->dirLeft + 1) % 2);
         pogobot_motor_dir_set(motorR, mydata->dirRight);
     } else {
@@ -82,20 +150,22 @@ void move_left(void) {
 #endif
 }
 
-// Tourne à droite
 void move_right(void) {
     mydata->lastTurn = RIGHT_TURN;
+
 #ifdef SIMULATOR
     pogobot_motor_set(motorL, motorHalf);
     pogobot_motor_set(motorR, motorHalf);
+
     pogobot_motor_dir_set(motorL, 1);
     pogobot_motor_dir_set(motorR, 1);
 #else
     if (HAS_WHEEL) {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorHalf);
+
         pogobot_motor_dir_set(motorL, mydata->dirLeft);
-        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1) % 2);
+        pogobot_motor_dir_set(motorR, (mydata->dirRight + 1 % 2));
     } else {
         pogobot_motor_set(motorL, motorHalf);
         pogobot_motor_set(motorR, motorStop);
@@ -103,77 +173,158 @@ void move_right(void) {
 #endif
 }
 
-// Stoppe les deux moteurs
 void move_stop(void) {
     pogobot_motor_set(motorL, motorStop);
     pogobot_motor_set(motorR, motorStop);
 }
 
-// Applique la logique de dispersion selon la direction d'où viennent les autres robots
-void move_logic(bool direction_detected[]) {
+
+
+void random_or_follow_turn(void) {
+
+    // Si on a déjà tourné à un côté, on prend le dernier côté effectué.
+    if (mydata->lastTurn == RIGHT_TURN)
+        move_right();
+    else if (mydata->lastTurn == LEFT_TURN)
+        move_left();
+
+    // Sinon, on choisit un côté au hasard. 
+    else if (rand() % 2) 
+        move_right(); 
+    else 
+        move_left();
+}
+
+
+/*
+ * ====================================================================================
+ */
+
+
+void move_logic(bool *detection) {
+    // Initialisation des capteurs
+    bool sensorFront = detection[0];
+    bool sensorRight = detection[1];
+    bool sensorBack = detection[2];
+    bool sensorLeft = detection[3];
+    bool sensorEverywhere = detection[4]; // Dans le cas du simulateur.
+
+    // Pour les leds
     int r = 0, g = 0, b = 0;
 
-    if (direction_detected[0]) {
-        move_left(); r = 255; g = 128; b = 0; // robot détecté devant
-    } else if (direction_detected[1] && !direction_detected[3]) {
-        move_left(); r = 255; g = 255; b = 0; // robot à droite uniquement
-    } else if (direction_detected[3] && !direction_detected[1]) {
-        move_right(); r = 255; g = 255; b = 0; // robot à gauche uniquement
-    } else if (direction_detected[2]) {
-        move_front(); r = 0; g = 255; b = 0; // robot derrière
-    } else if (direction_detected[1] && direction_detected[3]) {
-        move_front(); r = 0; g = 255; b = 255; // robots à gauche ET à droite
-    } else {
-        move_stop(); r = 0; g = 0; b = 255; // aucun robot détecté
+    if ((sensorFront && sensorLeft && sensorRight && sensorBack) || sensorEverywhere) {
+    #ifdef SIMULATOR
+        if (pogobot_ticks % 4 == 0)
+            move_front();
+        else
+            random_or_follow_turn();
+    #else
+        if (HAS_WHEEL)
+            random_or_follow_turn();
+        else
+            move_stop();
+    #endif
     }
 
-    pogobot_led_setColor(r, g, b); // feedback visuel via LED
+    else if (!sensorFront && sensorRight && sensorLeft) {
+        move_front();
+    }
+
+    else if (sensorRight) {
+        move_left();
+    }
+
+    else if (sensorLeft) {
+        move_right();
+    }
+
+    else if (sensorFront) {
+        random_or_follow_turn();
+    }
+
+    else if (sensorBack) {
+        move_front();
+    }
+
+    else {
+        move_stop();
+    }
+
+    r = 100 * sensorFront;
+    g = 100 * sensorRight;
+    b = 100 * sensorLeft;
+
+    pogobot_led_setColor(r, g, b);
 }
 
-// Initialisation de base du robot (lecture calibration moteurs, seed aléatoire, etc.)
+
+/*
+ * ====================================================================================
+ */
+
+
 void user_init(void) {
-    pogobot_stopwatch_reset(&mydata->timer_it);
-    main_loop_hz = 45;
-    max_nb_processed_msg_per_tick = 0;
-    msg_rx_fn = NULL;
-    msg_tx_fn = NULL;
-    error_codes_led_idx = 3;
-    pogobot_infrared_set_power(3);
-    srand(pogobot_helper_getRandSeed());
+    #ifndef SIMULATOR
+        printf("setup ok\n");
+    #endif
+        pogobot_stopwatch_reset(&mydata->timer_it);
+        main_loop_hz = 45;
+        max_nb_processed_msg_per_tick = 0;
+        msg_rx_fn = NULL;
+        msg_tx_fn = NULL;
+        error_codes_led_idx = 3;
+        pogobot_infrared_set_power(3);
+        srand(pogobot_helper_getRandSeed());
 
-    uint16_t power_mem[3];
-    uint8_t dir_mem[3];
-    pogobot_motor_power_mem_get(power_mem);
-    pogobot_motor_dir_mem_get(dir_mem);
 
-    mydata->motorLeft = power_mem[1];
-    mydata->motorRight = power_mem[0];
-    mydata->dirLeft = dir_mem[1];
-    mydata->dirRight = dir_mem[0];
-    mydata->lastTurn = NO_TURN;
-}
 
-// Fonction appelée à chaque cycle du robot (loop principale)
+        // Récupération des données de calibration des robots
+
+        uint16_t power_mem[3];
+        uint8_t dir_mem[3];
+
+        pogobot_motor_power_mem_get(power_mem);
+        mydata->motorLeft = power_mem[1];
+        mydata->motorRight = power_mem[0];
+
+        pogobot_motor_dir_mem_get(dir_mem);
+        mydata->dirLeft = dir_mem[1];
+        mydata->dirRight = dir_mem[0];
+
+        mydata->lastTurn = NO_TURN;
+    }
+    
+    
+/*
+ * ====================================================================================
+ */
+
+
 void user_step(void) {
-    bool direction_detected[4] = {false, false, false, false}; // capteurs IR dans chaque direction
-    ping_robots();                         // Envoie sa présence
-    observe(direction_detected);           // Analyse les signaux reçus
-    move_logic(direction_detected);        // Applique un comportement en fonction
+    bool detection[5] = {false, false, false, false, false};
+    ping_robots();
+    observe(detection);
+    move_logic(detection);
 }
 
-// Envoie un message spécial pour représenter un mur (dans la simulation)
+
+/*
+ * ====================================================================================
+ */
+
 bool ping_walls(void) {
     uint8_t ping_message[5] = {"wall"};
     return pogobot_infrared_sendLongMessage_omniSpe(ping_message, sizeof(ping_message));
 }
 
-// Initialisation spécifique aux murs (dans la simulation uniquement)
 void walls_user_init(void) {
 #ifndef SIMULATOR
     printf("setup ok\n");
 #endif
+    // Initialize the random number generator
     srand(pogobot_helper_getRandSeed());
     pogobot_infrared_set_power(3);
+
     main_loop_hz = 45;
     max_nb_processed_msg_per_tick = 0;
     percent_msgs_sent_per_ticks = 100;
@@ -182,17 +333,21 @@ void walls_user_init(void) {
     error_codes_led_idx = -1;
 }
 
-// Comportement simulé des murs (rien ici mais prêt à étendre)
 void walls_user_step(void) {
-    bool direction_detected[4] = {false, false, false, false};
-    observe(direction_detected);
-    move_logic(direction_detected);
+    // ...
 }
 
-// Point d'entrée principal
+/*
+ * ====================================================================================
+ */
+
+
 int main(void) {
     pogobot_init();
-    pogobot_start(user_init, user_step);                     // Comportement du robot
-    pogobot_start(walls_user_init, walls_user_step);         // Comportement des murs
+#ifndef SIMULATOR
+    printf("init ok\n");
+#endif
+    pogobot_start(user_init, user_step);
+    pogobot_start(walls_user_init, walls_user_step, "walls");
     return 0;
 }
