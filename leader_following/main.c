@@ -233,35 +233,26 @@ void random_walk_leader(bool *detection) {
 
     // après avoir commencé le mouvement seulement, vérification d'obstacle et de perte de successeur
     if(mydata->leader_dir != UINT16_MAX){
-        // pogobot_infrared_update();
-        // if(!pogobot_infrared_message_available()){
-        //     move_stop();
-        //     return;
-        // } 
-
-        //bool sensorFront = detection[0];
         bool sensorRight = detection[1];
         bool sensorBack = detection[2];
         bool sensorLeft = detection[3];
 
-        if(!sensorBack) { // si ne reçoit plus de message de son successeur, alors ARRÊT
+        if (sensorRight && sensorBack){ // obstacle à droite
+            move_left();
+            send_position(POSITION_MSG, mydata->my_id);  // envoie quand même msg pour son successeur si le suit tjr
+            // pogobot_infrared_clear_message_queue();
+            // pogobot_infrared_update();
+            return;
+        } else if (sensorLeft && sensorBack) { // obstacle à gauche
+            move_right();
+            send_position(POSITION_MSG, mydata->my_id);
+            // pogobot_infrared_clear_message_queue();
+            // pogobot_infrared_update();
+            return;
+        } else if (!sensorBack){ // si ne reçoit plus de message de son successeur, alors ARRÊT
             move_stop();
             send_position(POSITION_MSG, mydata->my_id); // envoi quand même un message au cas où son successeur aurait retrouvé la trace
             return;
-        } else { // évitement d'obstacle
-            if (sensorRight && sensorBack){ // obstacle à droite
-                move_left();
-                send_position(POSITION_MSG, mydata->my_id);  // envoie quand même msg pour son successeur si le suit tjr
-                // pogobot_infrared_clear_message_queue();
-                // pogobot_infrared_update();
-                return;
-            } else if (sensorLeft && sensorBack) { // obstacle à gauche
-                move_right();
-                send_position(POSITION_MSG, mydata->my_id);
-                // pogobot_infrared_clear_message_queue();
-                // pogobot_infrared_update();
-                return;
-            }
         }
     }
 
@@ -298,14 +289,6 @@ void random_walk_leader(bool *detection) {
         }
         send_position(POSITION_MSG, mydata->my_id);
     }
-    
-    // il faut forcément vider régulièrement la "boîte aux lettres" du leader pour ne pas conserver
-    // les anciens messages de son successeur qui l'empêcheraient de voir si ce dernier lui a envoyé récemment
-    // un message ou pas (et donc s'ils sont trop éloignés). (Si ce n'est pas fait, le leader s'arrêtera trop tard)
-    // (pas sûre si c'est bon comme strat, à tester irl)
-    // autre idée si celle-ci ne fonctionne pas -> stocker le temps auquel le dernier msg à été reçu, puis à chaque pas de temps, vérifier si ce temps est au dessus d'un ncertain intervalle
-    pogobot_infrared_clear_message_queue();
-    pogobot_infrared_update();
 }
 
 void follow_leader(bool *detection) {
@@ -313,7 +296,7 @@ void follow_leader(bool *detection) {
 
     bool sensorFront = detection[0];
     bool sensorRight = detection[1];
-    // bool sensorBack = detection[2];
+    bool sensorBack = detection[2];
     bool sensorLeft = detection[3];
 
     if (sensorFront && sensorRight){
@@ -324,6 +307,8 @@ void follow_leader(bool *detection) {
     }
     else if (sensorFront){
         move_front();
+    } else if (mydata->robot_behind == 1 && !sensorBack){
+        move_stop();
     }
     send_position(POSITION_MSG, mydata->my_id);
 
