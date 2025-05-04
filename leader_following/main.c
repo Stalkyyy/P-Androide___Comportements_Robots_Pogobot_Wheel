@@ -104,6 +104,8 @@ void user_init(void) {
     mydata->is_leader = 0;
     mydata->has_leader = 0;
     mydata->predecessor_id = UINT16_MAX;
+    mydata->successor_id = UINT16_MAX;
+    mydata->obstacle = 0;
     mydata->robot_behind = 0;
     mydata->nb_robots = 1;
     mydata->start_moving = 0;
