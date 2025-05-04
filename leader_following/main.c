@@ -49,6 +49,8 @@ typedef struct {
     uint16_t nb_neighbours; // max 2 voisins car disposition en file indienne
     uint16_t neighbours_ids[2];
     uint16_t predecessor_id; // id du robot à suivre dans la file indienne
+    uint16_t successor_id;
+    uint16_t obstacle; // booleen pour la présence d'obstacle
     uint8_t robot_behind; // 0 si faux, 1 si vrai
 
     uint16_t nb_robots;
@@ -205,8 +207,21 @@ void observe(bool detection[]) {
                     }
                 }
             } else {
+                uint16_t sender_id =  msg.header._sender_id;
                 if (sensor_id >= 0 && sensor_id < 4) {
                     detection[sensor_id] = true;
+                    if(sender_id == mydata->successor_id){
+                        mydata->obstacle = 0;
+                    } else {
+                        mydata->obstacle = 1;
+                    }
+                    // if (sensor_id == 0 || sensor_id == 1 || sensor_id == 3){
+                    //     if(sender_id == mydata->successor_id){
+                    //         mydata->obstacle = 0;
+                    //     } else {
+                    //         mydata->obstacle = 1;
+                    //     }
+                    // } 
                 }
             }
         }
@@ -234,27 +249,24 @@ void random_walk_leader(bool *detection) {
 
     // après avoir commencé le mouvement seulement, vérification d'obstacle et de perte de successeur
     if(mydata->leader_dir != UINT16_MAX){
+        //bool sensorFront = detection[0];
         bool sensorRight = detection[1];
         bool sensorBack = detection[2];
         bool sensorLeft = detection[3];
 
-        if (sensorRight){ // obstacle à droite
+        if (mydata->obstacle == 1 && sensorRight){ // obstacle à droite
             move_left();
             send_position(POSITION_MSG, mydata->my_id);  // envoie quand même msg pour son successeur si le suit tjr
-            // pogobot_infrared_clear_message_queue();
-            // pogobot_infrared_update();
             return;
-        } else if (sensorLeft) { // obstacle à gauche
+        } else if (mydata->obstacle == 1 && sensorLeft) { // obstacle à gauche
             move_right();
             send_position(POSITION_MSG, mydata->my_id);
-            // pogobot_infrared_clear_message_queue();
-            // pogobot_infrared_update();
             return;
-        } else if (!sensorBack){ // si ne reçoit plus de message de son successeur, alors ARRÊT
+        } else if (!sensorBack){ // si ne reçoit plus de message de son successeur, alors ARRÊT (et ne devrait recevoir de msg d'obstacle dans cette direction normalement)
             move_stop();
             send_position(POSITION_MSG, mydata->my_id); // envoi quand même un message au cas où son successeur aurait retrouvé la trace
             return;
-        }
+        } 
     }
 
     if(mydata->timer_init == 0){
@@ -369,6 +381,7 @@ void user_step(void) {
                         } else if (direction == 2){
                             printf("direction derrière %d\n", direction);
                             mydata->robot_behind = 1;
+                            mydata->successor_id = msg.header._sender_id;
                         }
                         send_id(msg.payload[0]);
                     }
