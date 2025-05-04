@@ -299,10 +299,10 @@ void follow_leader(bool *detection) {
     bool sensorBack = detection[2];
     bool sensorLeft = detection[3];
 
-    if (sensorFront && sensorRight){
+    if (sensorRight){
         move_right();
     }
-    else if (sensorFront && sensorLeft){
+    else if (sensorLeft){
         move_left();
     }
     else if (sensorFront){
