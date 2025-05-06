@@ -274,7 +274,7 @@ void random_walk_leader(bool *detection) {
         } 
     }
 
-    if(mydata->timer_init == 0){
+    if(pogobot_ticks % 145 == 0 && pogobot_helper_getid() == 0){
         mydata->leader_dir = rand() % 3; // 0: tout droit, 1: droite, 2: gauche
 
         if(mydata->leader_dir == 0){ // tout droit
@@ -298,18 +298,18 @@ void random_walk_leader(bool *detection) {
             }
         }
         pogobot_timer_init(&mydata->timer, WALK_IN_DIRECTION_TIME);
-        mydata->timer_init = 1;
+        //mydata->timer_init = 1;
     }
 
-    if(mydata->timer_init == 1){
+    else {
         if(mydata->stop == 1){
             move_front();
             mydata->stop = 0;
         }
 
-        if(pogobot_timer_has_expired(&mydata->timer)){ // timer expiré, changement de direction au prochain tour de user_step()
-            mydata->timer_init = 0;
-        }
+        // if(pogobot_timer_has_expired(&mydata->timer)){ // timer expiré, changement de direction au prochain tour de user_step()
+        //     mydata->timer_init = 0;
+        // }
         send_position(POSITION_MSG, mydata->my_id);
     }
 }
