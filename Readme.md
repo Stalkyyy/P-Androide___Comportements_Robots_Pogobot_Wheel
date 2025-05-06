@@ -18,7 +18,7 @@ Présentation
 L’ISIR vient de terminer la construction de 20 robots Pogobot à roues, des robots de 6 cm de diamètre, capables d’échanger des informations avec leurs voisins immédiats et de se déplacer à une vitesse d’environ 20 cm/s.
 L’objectif de ce projet est de programmer ces robots pour réaliser plusieurs tâches typiques de la robotique autonome et collective. Pour chaque tâche suivante, entre 10 et 20 robots sont placés dans une arène :
 
-- **[déplacement au hasard](random_walk)** : chaque robot se déplace en ligne droite lorsqu'il n'y a pas d'obstacle (robot ou mur) et change de direction dans le cas contraire.
+- **[déplacement au hasard](run_and_tumble)** : chaque robot se déplace en ligne droite lorsqu'il n'y a pas d'obstacle (robot ou mur) et change de direction dans le cas contraire.
 - **[suivi de leader](leader_following)** : les robots sont placés dans une arène en file indienne. Un robot suit un comportement de déplacement aléatoire, tandis que les autres robots suivent leur prédécesseur.
 - **[déplacement en formation](formation_movement)** : chaque robot se déplace en ligne droite en l'absence de voisin et évite les murs si nécessaire. En présence d'un voisin, un robot modifie sa direction pour s'aligner sur celle de son (ses) voisin(s).
 - **[alignement face au mur](wall_alignment)** : les robots se rapprochent des murs et s'arrêtent. L'état final consiste en un alignement des robots face au mur.
