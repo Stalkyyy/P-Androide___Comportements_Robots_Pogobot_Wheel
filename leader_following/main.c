@@ -58,6 +58,7 @@ typedef struct {
     time_reference_t timer;
     int timer_init; // pour initialiser le timer qu'une seule fois
     int start_moving;
+    int stop;
 
     uint16_t motorLeft;
     uint16_t motorRight;
@@ -112,6 +113,7 @@ void user_init(void) {
     mydata->lastDir = 0;
     mydata->leader_dir = UINT16_MAX;
     mydata->timer_init = 0;
+    mydata->stop = 0;
     pogobot_stopwatch_reset(&mydata->timer);
 
     mydata->all_known_ids[0] = mydata->my_id;
@@ -266,6 +268,7 @@ void random_walk_leader(bool *detection) {
             return;
         } else if (!sensorBack){ // si ne reçoit plus de message de son successeur, alors ARRÊT (et ne devrait recevoir de msg d'obstacle dans cette direction normalement)
             move_stop();
+            mydata->stop = 1;
             send_position(POSITION_MSG, mydata->my_id); // envoi quand même un message au cas où son successeur aurait retrouvé la trace
             return;
         } 
@@ -299,6 +302,11 @@ void random_walk_leader(bool *detection) {
     }
 
     if(mydata->timer_init == 1){
+        if(mydata->stop == 1){
+            move_front();
+            mydata->stop = 0;
+        }
+
         if(pogobot_timer_has_expired(&mydata->timer)){ // timer expiré, changement de direction au prochain tour de user_step()
             mydata->timer_init = 0;
         }
