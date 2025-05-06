@@ -59,6 +59,7 @@ typedef struct {
     int timer_init; // pour initialiser le timer qu'une seule fois
     int start_moving;
     int stop;
+    int is_successor;
 
     uint16_t motorLeft;
     uint16_t motorRight;
@@ -106,6 +107,7 @@ void user_init(void) {
     mydata->has_leader = 0;
     mydata->predecessor_id = UINT16_MAX;
     mydata->successor_id = UINT16_MAX;
+    mydata->is_successor = 0;
     mydata->obstacle = 0;
     mydata->robot_behind = 0;
     mydata->nb_robots = 1;
@@ -194,6 +196,8 @@ void move_stop(void) {
 }
 
 void observe(bool detection[]) {
+    mydata->obstacle = 0;
+    mydata->is_successor = 0;
     pogobot_infrared_update();
     while (pogobot_infrared_message_available()) {
         message_t msg;
@@ -215,7 +219,8 @@ void observe(bool detection[]) {
                 if (sensor_id >= 0 && sensor_id < 4) {
                     detection[sensor_id] = true;
                     if(sender_id == mydata->successor_id){
-                        mydata->obstacle = 0;
+                        //mydata->obstacle = 0;
+                        mydata->is_successor = 1;
                     } else {
                         mydata->obstacle = 1;
                     }
@@ -266,7 +271,9 @@ void random_walk_leader(bool *detection) {
             move_right();
             send_position(POSITION_MSG, mydata->my_id);
             return;
-        } else if (!sensorBack){ // si ne reçoit plus de message de son successeur, alors ARRÊT (et ne devrait recevoir de msg d'obstacle dans cette direction normalement)
+        } else if (mydata->is_successor == 1 && (sensorRight || sensorLeft)){
+            move_font();
+        } else if (mydata->is_successor == 0){ // si ne reçoit plus de message de son successeur, alors ARRÊT (et ne devrait recevoir de msg d'obstacle dans cette direction normalement)
             move_stop();
             mydata->stop = 1;
             send_position(POSITION_MSG, mydata->my_id); // envoi quand même un message au cas où son successeur aurait retrouvé la trace
@@ -274,7 +281,7 @@ void random_walk_leader(bool *detection) {
         } 
     }
 
-    if(pogobot_ticks % 145 == 0 && pogobot_helper_getid() == 0){
+    if(pogobot_ticks % 145 == 0){
         mydata->leader_dir = rand() % 3; // 0: tout droit, 1: droite, 2: gauche
 
         if(mydata->leader_dir == 0){ // tout droit
