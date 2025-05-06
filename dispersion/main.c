@@ -216,10 +216,7 @@ void move_logic(bool *detection) {
 
     if ((sensorFront && sensorLeft && sensorRight && sensorBack) || sensorEverywhere) {
     #ifdef SIMULATOR
-        if (pogobot_ticks % 4 == 0)
-            move_front();
-        else
-            random_or_follow_turn();
+        random_or_follow_turn();
     #else
         if (HAS_WHEEL)
             random_or_follow_turn();

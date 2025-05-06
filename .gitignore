@@ -28,7 +28,7 @@ dispersion/dispersion
 formation_movement/formation_movement
 leader_movement/leader_movement
 phototaxis/phototaxis
-random_walk/random_walk
+run_and_tumble/run_and_tumble
 wall_alignment/wall_alignment
 
 
@@ -91,7 +91,6 @@ build/
 libs/
 tests/
 frames/
-*.gif
 pogobot-sdk
 pogosim
 TODO

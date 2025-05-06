@@ -16,7 +16,7 @@ save_video_period: 1.0      # In s
 frames_name: "frames/f{:010.4f}.png"
 
 seed: 0
-show_communication_channels: true  # In the GUI, can enabled/disabled using F5
+show_communication_channels: false  # In the GUI, can enabled/disabled using F5
 show_lateral_LEDs: true             # In the GUI, can enabled/disabled using F6
 show_light_levels: false            # In the GUI, can enabled/disabled using F6
 GUI: true
@@ -47,7 +47,7 @@ objects:
     walls:
         type: pogowall      # Category type for Pogowalls
         geometry: arena     # Shape of the object. "Arena" means it will use the walls of the entire arena specified by "arena_file" (cf top of config file)
-        communication_radius: 20  # The communication ratius of the Pogowalls, in mm
+        communication_radius: 40  # The communication ratius of the Pogowalls, in mm
         msg_success_rate:
             type: static # Fixed msg success rate -- do not depend on the density, or message size
             rate: 0.9
